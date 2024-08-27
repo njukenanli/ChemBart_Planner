@@ -1,0 +1,20 @@
+answer_0_N[C@H](CO)C(=O)Nc1ccc(-c2cccc3[nH]ccc23)cc1_route_1
+{
+ "success": -1,
+ "probability": 0.0
+}
+synthesis route:
+{
+ "N[C@H](CO)C(=O)Nc1ccc(-c2cccc3[nH]ccc23)cc1": {
+  "O=C(N[C@H](CO)C(=O)Nc1ccc(-c2cccc3[nH]ccc23)cc1)c1ccccc1": "failed"
+ }
+}
+reaction information per step:
+{
+ "N[C@H](CO)C(=O)Nc1ccc(-c2cccc3[nH]ccc23)cc1": {
+  "reagents": "CCO.[Pd]",
+  "precursors": "O=C(N[C@H](CO)C(=O)Nc1ccc(-c2cccc3[nH]ccc23)cc1)c1ccccc1",
+  "temperature": 42.31752395629883,
+  "yield": 77.13639831542969
+ }
+}

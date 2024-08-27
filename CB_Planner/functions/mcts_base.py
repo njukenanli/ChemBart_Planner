@@ -11,9 +11,9 @@ class NODE():
     reagent = []
     N: int = 0
     V: Optional[int]
-    Nlist: List[int] = []
-    qlist: List[float] = []
-    Plist: List[float] = []
+    Nlist: List[int]
+    qlist: List[float]
+    Plist: List[float]
     #if is leaf, V = v from gen_value method, else V = G = mean(Vi for i in children_chosen)
     choice_len: int = 0
     def __init__(self, childlist, reagent, Plist: List[float], V: Optional[int]):
@@ -30,42 +30,44 @@ class NODE():
         return "childlist: {}, Nlist: {}\n".format(self.childlist, self.Nlist)
 
 class ROUTE():
-    success: int = -1 # in {-1, 1}
-    states_to_solve = set() # for next iteration, use set to avoid duplication
-    route = dict()
-    info = dict()
-    mean_prob = 1 # in [0, 1]
-    route_len = 0 
-    train_data = [] # in train mode, intermediate policy and value would be retained for RL use
-    root = None
-    maxlen: int = 20
-    def __init__(self, root, maxlen: int = 20):
+    success: int # in {-1, 1}
+    states_to_solve : set # for next iteration, use set to avoid duplication
+    route : dict
+    info : dict
+    mean_prob :float # in [0, 1]
+    route_len : int 
+    train_data: list # in train mode, intermediate policy and value would be retained for RL use
+    root: str
+    maxlen: int
+    is_end: Callable
+    def __init__(self, root, is_end, maxlen: int = 20):
         self.states_to_solve = set([root])
         self.root = root
         self.success = -1
         self.route = dict()
         self.info = dict()
-        self.mean_prob = 1
+        self.mean_prob = 1.0
         self.route_len = 0
         self.train_data = []
         self.maxlen = maxlen
+        self.is_end = is_end
     def __lt__(self, other):
         return self.mean_prob >= other.mean_prob
     def __str__(self):
         return "success state: {}, probability: {}, states_to_solve: {}, route_dict: {}\n"\
                 .format(self.success, self.mean_prob, self.states_to_solve, self.route)
     def gen_tree(self):
-        return {self.root: self._trace(self.route, self.root, 0)}
-    def _trace(self, d, root, depth):
-        '''
-        protected
-        '''
-        if root not in d:
-            return None
+        return {self.root: self._trace(self.root, 0)}
+    def _trace(self, root, depth):
+        if root not in self.route:
+            if self.is_end(root):
+                return "basic_molecule"
+            else:
+                return "failed"
         elif depth > self.maxlen:
-            return None
+            return "failed"
         else:
-            return dict([[i, self._trace(d, i, depth+1)] for i in d[root]])
+            return dict([[i, self._trace(i, depth+1)] for i in self.route[root]])
 
 class MCTS_BASE():
     '''
@@ -94,7 +96,7 @@ class MCTS_BASE():
         route_len : int
         route_idx : int
         childnode_idx : list
-        states_to_solve : list
+        states_to_solve : set
         def __init__(self, prob, route_idx, route_len = -1):
             self.success = -1
             self.prob = prob
@@ -104,17 +106,18 @@ class MCTS_BASE():
             self.states_to_solve = set()
         def __lt__(self, other):
             return self.prob >= other.prob
-        def gen_route(self, oldroute, returninfo):
+        def gen_route(self, oldroute, returninfo, search_space):
             newroute = deepcopy(oldroute)
             newroute.success = self.success
             newroute.mean_prob = self.prob
-            newroute.route_len = self.route_len
+            if self.route_len > 0:
+                newroute.route_len = self.route_len
             newroute.states_to_solve = self.states_to_solve
-            for i in range(len(childnode_idx)):
+            for i in range(len(self.childnode_idx)):
                 father = returninfo[i][0]
-                newroute.route[father] = self.search_space[father].childlist[childnode_idx[i]]
-                newroute.info[father] = {"reagents": self.search_space[father].reagent[childnode_idx[i]], "precursors": newroute.route[father]}
-            return new_route
+                newroute.route[father] = search_space[father].childlist[self.childnode_idx[i]]
+                newroute.info[father] = {"reagents": search_space[father].reagent[self.childnode_idx[i]], "precursors": ".".join(newroute.route[father])}
+            return newroute
     class PrioritizedItem():
         parent_idx: int # position in return_list[route_idx]
         idx: int # position in Plist/childlist
@@ -124,7 +127,7 @@ class MCTS_BASE():
             self.idx = idx
             self.prob = prob
         def __lt__(self, other):
-            return self.value >= other.value
+            return self.prob >= other.prob
     def __init__ (self, gen_choice: Callable, is_end: Callable, gen_value: Optional[Callable] = None,
             temp_coef: float = 1.0, max_route_len: int = 15, max_search_depth: int = 8, mcts_times: int = 400,
             Cpuct: float = 1.0, update_method: str = 'avg', debug: bool = False):
@@ -181,7 +184,7 @@ class MCTS_BASE():
             if l[i] > maxvalue:
                 maxvalue = l[i]
                 maxindex = i
-        #return maxindex
+        return maxindex
 
     def _discard(self, routelist):
             q = Queue(maxsize = -1) #BFS
@@ -197,16 +200,16 @@ class MCTS_BASE():
                         for branches in self.search_space[nodev].childlist:
                             for next_state in branches:
                                 q.put(next_state)
-            oldkeys = self.search_space.keys()
-            for i in range(len(oldkeys)):
-                if oldkeys[i] not in retained:
-                    self.search_space.pop(oldkeys[i])
+            oldkeys = list(self.search_space.keys())
+            for key in oldkeys:
+                if key not in retained:
+                    self.search_space.pop(key)
             del oldkeys, retained
             gc.collect()
             return
 
     def play(self, root, idx :int, alternatives: int = 1, train: bool = True, 
-            max_train_data_num: int = 5000, check_cycle: bool = True, 
+            max_train_data_num: int = 5000, 
             lock1 = None, lock2 = None, lock3 = None):
         '''
         public: This is the MCTS entrance for the user.
@@ -219,27 +222,27 @@ class MCTS_BASE():
         ret = dict()
         #Step1 varify input need to be solved
         if self.is_end(root):
-            return {"answer_"+str(idx)+"_route_0": [{"success": 1, "probablity": 0}, {root: None}, {root: None}]}
+            return {"answer_"+str(idx)+"_"+root+"_route_0": [{"success": 1, "probablity": 1.0}, {root: "basic mol"}, {root: "basic mol"}]}
         
         #Step2 prepare to solve
-        routelist = [ROUTE(root, self.max_route_len)] # for multi_route design it would be expanded
+        routelist = [ROUTE(root, self.is_end, self.max_route_len)] # for multi_route design it would be expanded
         finished_route = []
         
         #Step3 solve for each iteration
         for iteration in range(self.max_route_len):
-            return_list = [[] for a in range(len(routelist))]
+            return_list = []
             for a in range(len(routelist)):
-                return_list[a].append(self._dfs_main(status, lock1, lock2, lock3) for status in routelist[a].states_to_solve] ) )
+                return_list.append([self._dfs_main(status, lock1, lock2, lock3) for status in routelist[a].states_to_solve])
             
             #Step4 analyse these multiple routes computed and adopt beam search
             # return_list dim : 
             #   [dim1: answer of each route;
-            #   dim2: answer of each branch in this route; 
+            #   dim2: answer of each branch in this route;
             #   dim3: (root, policy) for this branch]
             new_route_list = [] # for next iteration, item: RouteRepresenter
             for a in range(len(routelist)):
                 #for each route 
-                if routelist[a].mean_prob == 0:
+                if routelist[a].mean_prob == 0.0:
                     new_route_list.append(self.RouteRepresenter(0.0, a))
                     continue 
                 failed = False
@@ -278,12 +281,10 @@ class MCTS_BASE():
                         prob_prod *= item.prob
                         picked_policy_list.append((item.prob, branch_list))
                     else:
-                        picked_policy_list.append((1, branch_list))
+                        picked_policy_list.append((1.0, branch_list))
                 if not newroute.states_to_solve:
-                    newroute.mean_prob = 1
                     newroute.success = 1
-                else:
-                    newroute.prob = prob_prod**(1/newroute.route_len)
+                newroute.prob = prob_prod**(1/newroute.route_len)
                 beam_count -= 1
                 new_route_list.append(newroute)
                 # if it is for single path, then this while iteration will be skipped
@@ -303,7 +304,7 @@ class MCTS_BASE():
                     newroute.success = -1
                     newroute.childnode_idx[item.parent_idx] = item.idx
                     branch_list = []
-                    for next_state in self.search_space[return_list[a][item.parent_idx][0]].childlist:
+                    for next_state in self.search_space[return_list[a][item.parent_idx][0]].childlist[item.idx]:
                         if not self.is_end(next_state):
                             branch_list.append(next_state)
                     prob_prod = prob_prod / picked_policy_list[item.parent_idx][0]
@@ -311,32 +312,27 @@ class MCTS_BASE():
                         prob_prod *= return_list[a][item.parent_idx][1][item.idx]
                         picked_policy_list[item.parent_idx] = (return_list[a][item.parent_idx][1][item.idx], branch_list)
                     else:
-                        picked_policy_list[item.parent_idx] = (1, branch_list)
-                    new_route.states_to_solve = set()
+                        picked_policy_list[item.parent_idx] = (1.0, branch_list)
+                    newroute.states_to_solve = set()
                     for next_state in picked_policy_list:
                         newroute.states_to_solve.update(next_state[1])
                     if not newroute.states_to_solve:
-                        newroute.mean_prob = 1
                         newroute.success = 1
-                    else: 
-                        newroute.prob = prob_prod**(1/newroute.route_len)
+                    newroute.prob = prob_prod**(1/newroute.route_len)
                     beam_count -= 1
                     new_route_list.append(newroute)
             beam_count = alternatives
-            del routelist
             oldroutelist = routelist
             routelist = []
             heapq.heapify(new_route_list)
             while (beam_count and new_route_list):
                 item = heapq.heappop(new_route_list)
                 if item.success == 1:
-                    finished_route.append(item)
+                    finished_route.append(item.gen_route(oldroutelist[item.route_idx], return_list[item.route_idx], self.search_space))
                     alternatives -= 1
                 else:
-                    routelist.append(item)
+                    routelist.append(item.gen_route(oldroutelist[item.route_idx], return_list[item.route_idx], self.search_space))
                 beam_count -= 1
-            for i in range(len(routelist)):
-                routelist[i] = routelist[i].gen_route(oldroutelist[routelist[i].route_idx], return_list[routelist[i].route_idx])
             del oldroutelist
 
             
@@ -354,20 +350,18 @@ class MCTS_BASE():
                     print(item)
             if (not alternatives):
                 break
-            if len(routelist) == 0 or routelist[0].mean_prob == 0:
+            if len(routelist) == 0 or routelist[0].mean_prob == 0.0:
                 break
 
             #Step5 garbage collection: discard branches not selected
-            self._discard(self, routelist)
-            del return_list
-            gc.collect()
+            self._discard(routelist)
         
         #Step6 save output route and (Optional) RL train data
         if alternatives > 0:
             finished_route.extend(routelist[0:alternatives])
         for route_idx in range(len(finished_route)):
             ans = finished_route[route_idx].gen_tree()
-            ret["answer_"+str(idx)+"_route_"+str(route_idx)] = [{"success": finished_route[route_idx].success, "probability": finished_route[route_idx].mean_prob}, ans, finished_route[route_idx].info]
+            ret["answer_"+str(idx)+"_"+root+"_route_"+str(route_idx)] = [{"success": finished_route[route_idx].success, "probability": finished_route[route_idx].mean_prob}, ans, finished_route[route_idx].info]
         train_data = []
         for route in finished_route:
             for train_data_idx in range(len(route.train_data)):
@@ -380,9 +374,10 @@ class MCTS_BASE():
             json.dump(train_data[0:max_train_data_num], f)
         return ret
 
-    def _check_cycle(childlist, ancestors): 
+    def _check_cycle(self, childlist, ancestors): 
         for i in childlist:
-            if i in ancestors: return True
+            if i in ancestors: 
+                return True
         return False
  
     def _dfs_main(self, root, lock1, lock2, lock3):
@@ -396,7 +391,6 @@ class MCTS_BASE():
             self._dfs(root, 1, ancestor, lock1, lock2, lock3)
         #generate policy vector
         policy = [0.0]*self.search_space[root].choice_len
-        norm = 0
         for i in range(self.search_space[root].choice_len):
             policy[i] = self.search_space[root].Nlist[i]**(1/self.temp_coef)
         norm = sum(policy)
@@ -411,9 +405,11 @@ class MCTS_BASE():
         Note: when changing shared data, there's a need to lock the processes. 
         If we only visit shared data, there's no need to lock.
         '''
+        #print("hit", root, flush=True)
         if root not in self.search_space:
             self.search_space[root] = self.gen_choice(root, lock1, lock2, lock3)
         self.search_space[root].N += 1
+        #print(self.search_space[root].childlist)
         if not self.search_space[root].choice_len:
             self.search_space[root].V = -1
         else:
@@ -441,11 +437,17 @@ class MCTS_BASE():
                     vlist.append(1)
                 elif depth == self.max_search_depth:
                     if next_state not in self.search_space:
-                        V = self.gen_value(next_state, lock3)
-                        self.NN_value[next_state] = V
+                        if next_state in self.NN_value:
+                            V = self.NN_value[next_state]
+                        else:
+                            V = self.gen_value(next_state, lock3)
+                            self.NN_value[next_state] = V
                     elif self.search_space[next_state].V is None:
-                        V = self.NN_value[next_state] if next_state in self.NN_value else self.gen_value(next_state, lock3)
-                        self.search_space[next_state].V = V
+                        if next_state in self.NN_value:
+                            V = self.NN_value[next_state]
+                            self.search_space[next_state].V = V
+                        else:
+                            self.search_space[next_state].V = self.gen_value(next_state, lock3)
                     else:
                         V = self.search_space[next_state].V
                     if V == -1:
@@ -456,7 +458,7 @@ class MCTS_BASE():
                     rec_states.append(next_state)
             if sumv != -1:
                 for next_state in rec_states:
-                    self._dfs(next_state, depth+1, ancestors^{root})
+                    self._dfs(next_state, depth+1, ancestors^{root}, lock1, lock2, lock3)
                 for next_state in rec_states:
                     vlist.append(self.search_space[next_state].V)
                 sumv = self._gen_V(vlist)

@@ -30,3 +30,14 @@ class utils():
                 if i == j:
                     return True
         return False
+
+    @staticmethod
+    def general_basic_mol(canonized_smi):
+        mol = Chem.MolFromSmiles(canonized_smi)
+        if mol is None:
+            return 0
+        c = 0
+        for i in mol.GetAtoms():
+            if i.GetAtomicNum() == 6:
+                c += 1
+        return (c<=6)

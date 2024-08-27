@@ -1,66 +1,61 @@
 import os, sys, json
-sys.path.append(os.path.dirname(os.path.abspath("__file__"))+"/functions/ChemBart")
-from CB_Planner.functions.mcts_base import *
-from CB_Planner.functions.nn import pv, ty
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/functions/ChemBart")
+from CB_Planner.functions.mcts_base import MCTS_BASE
+from CB_Planner.functions.nn import PV, TY
 from CB_Planner.functions.utils import utils
 import torch.multiprocessing
 torch.multiprocessing.set_start_method('spawn', force = True)
 from torch.multiprocessing import Pool, Manager
 import torch
+from copy import deepcopy
 
 class MY_MCTS(MCTS_BASE):
-    end_set = set() # I suggest using dict and set for find operation because in python dict and set are based on Hash table so find operation takes O(1)
-    def __init__(self, pv, mcts_times = 200, max_route_len = 16, max_search_depth = 8, debug = False):
-        with open("data/basic_mol.json") as f:
+    # I suggest using dict and set for find operation because in python dict and set are based on Hash table so find operation takes O(1)
+    def __init__(self, pv, params):
+        with open("CB_Planner/data/basic_mol.json") as f:
             self.end_set = set(json.load(f)) # this is buyable molecule set from Emolecules with chirality
-        super().__init__(gen_choice = self.gen_choice, is_end = self.is_end, gen_value = self.gen_value, mcts_times = mcts_times, max_route_len = max_route_len, max_search_depth = max_search_depth, debug = debug)
         self.pv = pv
+        super().__init__(gen_choice = self.gen_choice, is_end = self.is_end, gen_value = self.gen_value, **params)
+        return
     def gen_choice(self, status, lock1 = None, lock2 = None, lock3 = None):
         return self.pv.GenChildnodePolicy(status, lock1, lock2, lock3)
     def gen_value(self, status, lock3 = None):
         return self.pv.Value(status, lock3)
     def is_end(self, status):
-        return (status in self.end_set)
+        res = utils.general_basic_mol(status) or (status in self.end_set)
+        return res
 
 class CB_Planner():
-    def __init__(self, train = False, max_train_data_num = 5000, mcts_times = 200, max_route_len = 16, max_search_depth = 8, debug = False, gen_dev = "cuda:0", val_dev = "cuda:1", rl_dev = "cuda:2", temp_yield_dev = "cuda:0", choiceperstep = 10, process_parallel = True, pool_zise = 4, semaphore_per_model = 2 ):
-        self.train = train
-        self.mcts_times = mcts_times
-        self.max_route_len = max_route_len
-        self.max_search_depth = max_search_depth
-        self.debug = debug
-        self.pool_zise = pool_zise
-        self.semaphore_per_model = semaphore_per_model
-        self.pv = pv(gen_dev = gen_dev, val_dev = val_dev, rl_dev = rl_dev, choiceperstep = choiceperstep)
-        self.temp_yield_dev = temp_yield_dev
-        self.process_parallel = process_parallel
-        self.max_train_data_num = max_train_data_num
-    def paraller_unit(self, target, idx, alternatives, lock1 = None, lock2 = None, lock3 = None):
-        target = utils.canonize(target)
-        if target is None: return {"answers_"+str(idx)+"_route_0": [1, {target: None}, {target: None}]}
-        mcts = MY_MCTS(pv = self.pv, mcts_times = self.mcts_times, max_route_len = self.max_route_len, max_search_depth = self.max_search_depth, debug = self.debug)
-        return mcts.play(target, idx, alternatives = alternatives, train = self.train, max_train_data_num = self.max_train_data_num, lock1 = lock1, lock2 = lock2, lock3 = lock3)
+    def __init__(self, config):
+        self.config = config
+    def paraller_unit(self, pv, target, idx, alternatives, lock1 = None, lock2 = None, lock3 = None):
+        root = utils.canonize(target)
+        if root is None: return {"answers_"+str(idx)+"_"+target+"_route_0": [{"success" : -1 , "probability" : 0}, {target: "wrong smiles!"}, {target: "wrong smiles!"}]}
+        mcts = MY_MCTS(pv = pv, params = self.config["mcts"])
+        return mcts.play(root, idx, alternatives = alternatives, train = self.config["getdata"]["train"], max_train_data_num = self.config["getdata"]["max_train_data_num"], lock1 = lock1, lock2 = lock2, lock3 = lock3)
     def plan(self, tasklist):
+        pv = PV(gen_dev = self.config["nn"]["gen_dev"], val_dev = self.config["nn"]["val_dev"], rl_dev = self.config["nn"]["rl_dev"], choiceperstep = self.config["nn"]["choiceperstep"])
         routes = dict()
-        if len(tasklist) == 1 or (not self.process_parallel):
+        if len(tasklist) == 1 or (not self.config["parallel"]["process_parallel"]):
             for i in range(len(tasklist)):
-                routes.update(self.paraller_unit(tasklist[i][0], i, tasklist[i][1], None, None, None))
+                routes.update(self.paraller_unit(pv, tasklist[i][0], i, tasklist[i][1], None, None, None))
         else:
-            self.pv.share_memory()
-            mamagerlist = [Manager(), Manager(), Manager()]
-            locklist = [i.Semaphore(self.semaphore_per_model) for i in managerlist]
-            with Pool(self.pool_size) as pool:
+            pv.share_memory()
+            managerlist = [Manager(), Manager(), Manager()]
+            locklist = [i.Semaphore(self.config["parallel"]["semaphore_per_model"]) for i in managerlist]
+            with Pool(self.config["parallel"]["pool_size"]) as pool:
                 res = []
                 for i in range(len(tasklist)):
-                    res.append(pool.apply_async(self.paraller_unit, (tasklist[i][0], i, tasklist[i][1], locklist[0], locklist[1], locklist[2])))
+                    res.append(pool.apply_async(self.paraller_unit, (pv, tasklist[i][0], i, tasklist[i][1], locklist[0], locklist[1], locklist[2])))
                 pool.close()
                 pool.join()
                 for i in res:
                     routes.update(i.get())
-        del self.pv
+        del pv
         # process answer, add other reaction info...
-        tymodel = ty(self.temp_yield_dev)
+        ty = TY(self.config["nn"]["temp_yield_dev"])
         ty.AddTemperatureYield(routes)
+        del ty
         return routes
     def save_to_file(self, routes):
         for route_name in routes:

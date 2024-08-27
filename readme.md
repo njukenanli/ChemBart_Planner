@@ -1,0 +1,66 @@
+# ChemBart Planner: Retrosynthesis Route Planning Program with a Pre-trained LLM #
+
+This is the multi-step synthesis route planner based on our pre-trained LLM: ChemBart. In this program, we use our pre-trained and fine-tuned ChemBart models to generate synthesis precursors for target product molecules, and reaction information for each step like reagents, temperature, yield and so on. We use the MCTS and RL algorithms in our previous work ReSynZ([https://pubs.acs.org/doi/10.1021/acs.jctc.4c00071?ref=pdf](https://pubs.acs.org/doi/10.1021/acs.jctc.4c00071?ref=pdf)) for the selection of precursors in each synthesis step.
+
+## Reference ##
+For our pre-trained model "Chemistry Bart" (ChemBart) Paper *ChemBart: A Pre-trained Bart Model Assisting Organic Chemistry Analysis*, see [not yet published].
+
+For ChemBart source code, see CB_Planner/functions/ChemBart/: [https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart).
+
+For implementation details of this planner, see CB_Planner/: [https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner)
+
+## Preparation ##
+
+The original code is implemented on Linux. To set up the python environment, the following library is required.
+> PyTorch (with cuda or not)
+> 
+> transformers
+> 
+> rdkit
+
+Datasets should also be downloaded separately to run the planner. Get data from the link [not yet published]. 
+
+Put the buyable molecule dataset "basic\_mol.json" in CB\_Planner/data. put the pre-trained model "ChemBart.pth", the fine-tuned model for MCTS(RL) "CB\_MCTS.pth", and the fine-tuned model for temperature-yield prediction "temp\_yield\_bart.pth" in the directory CB\_Planner/data/model (-> CB_Planner/functions/ChemBart/model). Note that the program would only read the checkpoint files named "ChemBart.pth", "CB\_MCTS.pth", and "temp\_yield\_bart.pth", so if you want to substitute these files with other checkpoints, change the name of the checkpoint file you are going to use to the above required names.
+
+## Planning ##
+1.Target Molecules
+
+Put the target molecules you want to analyse in the tasklist.py file. Each molecule should be written in the form (SMILES expression, number of alternative routes you want to get). Usually the number of alternative routes is set to be around 1~3.
+
+2.Config
+
+Edit the parameters in the config.py file to control the planner. The discriptions of the parameters are also in the file. Here are some suggested values for some of the parameters.
+    
+    - mcts_times: 50 - 100 # DFS iteration time per step. As the running of LLM is usually very slow, the number of DFS per step should not be set too high.
+    - max_route_len: 12 - 20, # The max length of the route designed, if the program exceeds the limit but still haven't finished, return failed. If this paramater is set too low, many routes would end up uncompleted. On the contrary, It is also unnecessary to set this parameter too high. Usually most synthesis programms cannot handle routes longer than 20.
+    - max_search_depth: 8, # The max depth of DFS in MCTS. Usually the higher the better, but also much slower.
+    - choice_per_step: 10, # Usually LLM can only generate around 10 choices with high quality. We need to make more efforts to generate more choices in each step to increase the design success rate.
+    - pool_size: If there are more than one cpus, process parallel here can be considered. If users use GPUs, each process would generate some memory usage in each GPU due to the “share memory” technique of the PyTorch model, so the Pool is needed in multiprocessing to limit the number of processes that are running at the same time in case of OOM or just seizure. For 11GB GPU, pool size should be no larger than 3; for 24GB, 6; for 48GB, 12.
+    - semaphore_per_model: # num of processes that can call a model at the same time, limited by the gpu memory. For 11GB GPU, 1; for 24GB, no larger than 3; for 48 GB, 6.
+    
+
+3.Run the Planner
+
+Run the main.py to start route planning.
+
+>     python main.py
+
+For background running,
+
+>     nohup python main.py > log.out 2>&1 &
+
+
+## Results ##
+The computation results are in the directory "answer". The name of each result file is ‘answer \_ target molecule index \_ target molecule SMILES \_ route \_ alternative route index for this molecule’ and each file shows a route. In each file, it first shows whether the route design is successful and the total probability of the route (the product of the probabilities of each step); then the synthesis route, which is expanded in the format of ‘target molecule: {its  precursors respectively}’; and finally, the information of each step, including the reagents, the temperature, and the yield, which are predicted by our pre-trained and fine-tuned model.
+
+If you set to retain MCTS process data for RL in config.py, the train data would also be saved here. The format is "[[product molecule, precursor list], [value, policy]]".
+
+If you would like to process the results after MCTS, add codes in main.py after 
+
+>     ans = planner.plan(tasklist)
+
+or in CB\_Planner/board.py after
+
+>     ty.AddTemperatureYield(routes)
+>     del ty
+

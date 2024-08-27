@@ -15,10 +15,12 @@ class ChemBart():
     tokenizer=None
     BartNN=None
     config=None
-    def __init__(self):
+    def __init__(self, dev = "cpu"):
         self.tokenizer=CBTokenizer()
         self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
+        self.dev = torch.device(dev)
+        self.BartNN.to(self.dev)
         try:
             self.load_model()
             print("load previous model")
@@ -136,24 +138,22 @@ class ChemBart():
             print('Epoch train Loss: {}'.format(round(total_loss_train/(datapiece+1) ,3)),flush=True)
 
     def predict(self, s, decoder_input="<cls>",
-                top_k=10, max_len=60, device="cuda:0",
-                stop_with_sep = True):
+                top_k=10, max_len=60, stop_with_sep = True):
         '''
         for generation
         '''
         with torch.no_grad():
-            dev = torch.device(device)
             inputvector=self.tokenizer.encoder(s)[0].tolist()
-            self.BartNN=self.BartNN.eval().to(dev)
+            self.BartNN=self.BartNN.eval()
             decodervector = self.tokenizer.encoder(decoder_input)[0][:-1].tolist()
             #outputdict=self.BartNN.generate(inputvector, min_length=0, max_length=60 ,return_dict_in_generate=True ,output_scores=True, 
             #    num_beams=top_k , num_return_sequences=top_k,bos_token_id=1,decoder_start_token_id=1,eos_token_id=3,pad_token_id=0 )
             outputprob=self._beam_search(inputvector,decodervector,
-                                        top_k,max_len,stop_with_sep,dev)
+                                        top_k,max_len,stop_with_sep, self.dev)
             #print(outputprob)
             outl=[]
             for i in range(top_k):
-                outl.append((self.tokenizer.decoder(outputprob[i][0]),outputprob[i][1]))
+                outl.append([self.tokenizer.decoder(outputprob[i][0]),outputprob[i][1]])
             return outl
     def _beam_search(self,s,decodervector,k,maxlen, stop_with_sep, dev):
         #print(s,decodervector)
@@ -266,6 +266,7 @@ class CB_END(nn.Module):
             print("pre-trained model")
         else:
             print("new model")
+        self.to(self.device)
             
     def forward(self, x):
         last_hidden = self.BartNN(input_ids=x, decoder_input_ids=x, return_dict=True, output_hidden_states=True).decoder_hidden_states[-1][0][-1]

@@ -1,0 +1,30 @@
+answer_1_CC(C(=O)N1CCN(c2ncc(C(F)(F)F)cn2)CC1)n1cc2cccc(C(N)=O)c2n1_route_0
+{
+ "success": 1,
+ "probability": 1.0
+}
+synthesis route:
+{
+ "CC(C(=O)N1CCN(c2ncc(C(F)(F)F)cn2)CC1)n1cc2cccc(C(N)=O)c2n1": {
+  "CC(Cl)C(=O)N1CCN(c2ncc(C(F)(F)F)cn2)CC1": {
+   "CC(Cl)C(=O)O": "basic_molecule",
+   "FC(F)(F)c1cnc(N2CCNCC2)nc1": "basic_molecule"
+  },
+  "NC(=O)c1cccc2cn[nH]c12": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "CC(C(=O)N1CCN(c2ncc(C(F)(F)F)cn2)CC1)n1cc2cccc(C(N)=O)c2n1": {
+  "reagents": "O=C([O-])[O-].[Cs+].[Cs+].CN(C)C=O",
+  "precursors": "CC(Cl)C(=O)N1CCN(c2ncc(C(F)(F)F)cn2)CC1.NC(=O)c1cccc2cn[nH]c12",
+  "temperature": 78.4455795288086,
+  "yield": 45.377620697021484
+ },
+ "CC(Cl)C(=O)N1CCN(c2ncc(C(F)(F)F)cn2)CC1": {
+  "reagents": "CCN(CC)CC.CN(C)C(On1nnc2cccnc21)=[N+](C)C.F[P-](F)(F)(F)(F)F.CN(C)C=O",
+  "precursors": "CC(Cl)C(=O)O.FC(F)(F)c1cnc(N2CCNCC2)nc1",
+  "temperature": 81.58535766601562,
+  "yield": 56.912906646728516
+ }
+}

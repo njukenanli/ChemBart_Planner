@@ -2,14 +2,12 @@ import os, json
 absdir = os.path.dirname(os.path.abspath(__file__))+"/"
 import torch
 class CBTokenizer():
-    vocab={}
-    vocabkey=[]
-    d5={}
-    d2={}
-    d1={}
     def __init__ (self):
         with open(absdir + 'vocab.json') as f:
             self.vocab=json.load(f)
+        self.d1 = dict()
+        self.d2 = dict()
+        self.d5 = dict()
         
         for i in self.vocab:
             if len(i)==2:

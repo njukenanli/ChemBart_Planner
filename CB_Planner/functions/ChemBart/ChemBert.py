@@ -5,10 +5,11 @@ from transformers.models.bart.modeling_bart import BartEncoder
 from CBTokenizer import CBTokenizer
 import os
 import torch.nn.functional as F
+absdir = os.path.dirname(os.path.abspath(__file__))+"/"
 class ChemBert(nn.Module):
     def __init__(self):
         super().__init__()
-        self.config = BartConfig.from_pretrained("config.json")
+        self.config = BartConfig.from_pretrained(absdir + "config.json")
         self.shared = nn.Embedding(self.config.vocab_size,
                       self.config.d_model, self.config.pad_token_id)
         self.encoder = BartEncoder(self.config, self.shared)
@@ -27,7 +28,7 @@ class ChemBert(nn.Module):
         return encoder_outputs
     def load(self):
         try:
-            self.load_state_dict(torch.load('model/ChemBert.pth',map_location='cpu'))
+            self.load_state_dict(torch.load(absdir + 'model/ChemBert.pth',map_location='cpu'))
         except Exception as err:
             print(err)
             print("new model")
@@ -56,10 +57,10 @@ class CB_END(nn.Module):
         n>=3: ont-hot-encoding classification with n classes
         '''
         super().__init__()
-        self.name = "model/"+name+'.pth'
+        self.name = absdir + "model/"+name+'.pth'
         self.tokenizer = CBTokenizer()
         self.type = out_type
-        self.config=BartConfig.from_pretrained("config.json")
+        self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BertNN = ChemBert()
         self.ran = ran
         if self.type == 1 or self.type == 2:
@@ -72,7 +73,7 @@ class CB_END(nn.Module):
         if os.path.exists(self.name):
             self.load_state_dict(torch.load(self.name,map_location='cpu'))
             print("fine-tuned model")
-        elif os.path.exists('model/ChemBart.pth'):
+        elif os.path.exists(absdir + 'model/ChemBart.pth'):
             self.BertNN.load_from_bart()
             print("pre-trained model")
         else:
@@ -196,7 +197,7 @@ class CB_mul_END(nn.Module):
     '''
     def __init__(self, name: str, device: str = "cuda:0"):
         super().__init__()
-        self.name = "model/"+name+'.pth'
+        self.name = absdir + "model/"+name+'.pth'
         self.tokenizer = CBTokenizer()
         self.config=BartConfig.from_pretrained("config.json")
         self.BertNN = ChemBert()
@@ -206,7 +207,7 @@ class CB_mul_END(nn.Module):
         if os.path.exists(self.name):
             self.load_state_dict(torch.load(self.name,map_location='cpu'))
             print("fine-tuned model")
-        elif os.path.exists('model/ChemBart.pth'):
+        elif os.path.exists(absdir + 'model/ChemBart.pth'):
             self.BertNN.load_from_bart()
             print("pre-trained model")
         else:
