@@ -116,7 +116,8 @@ class MCTS_BASE():
             for i in range(len(self.childnode_idx)):
                 father = returninfo[i][0]
                 newroute.route[father] = search_space[father].childlist[self.childnode_idx[i]]
-                newroute.info[father] = {"reagents": search_space[father].reagent[self.childnode_idx[i]], "precursors": ".".join(newroute.route[father])}
+                status = (sum([int(oldroute.is_end(mol)) for mol in newroute.route[father]]) == len(newroute.route[father]))
+                newroute.info[father] = {"reagents": search_space[father].reagent[self.childnode_idx[i]], "precursors": ".".join(newroute.route[father]), "probability": 1.0 if status else returninfo[i][1][self.childnode_idx[i]]}
             return newroute
     class PrioritizedItem():
         parent_idx: int # position in return_list[route_idx]
