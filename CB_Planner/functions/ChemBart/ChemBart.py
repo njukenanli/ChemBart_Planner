@@ -962,3 +962,181 @@ class CB_Regression(nn.Module):
             item_RMSE = self.RMSE(reslist[idx])
             RMSE_list.append(item_RMSE)
         return (RMSE_list, reslist)
+
+class CB_multi_task_sep_regression(nn.Module):
+    '''
+    Your input should be: ["<cls>molecule_smiles<task_token><end>", label]
+    where <task_token> is <n00> <n01> <n02> <n03> <n04> representing different properties, 
+    and label is float number
+    '''
+    def __init__(self, name: str, num_feature: int, binary_classification: bool, device: str = "cuda:0"):
+        '''
+        out_type:
+        1: regression
+        2: binary classification
+        '''
+        super().__init__()
+        self.name = absdir + "model/"+name+'.pth'
+        self.tokenizer = CBTokenizer()
+        self.config=BartConfig.from_pretrained(absdir + "config.json")
+        self.BartNN=BartForConditionalGeneration(self.config)
+        self.linear_list = nn.ModuleList([nn.Linear(1024, 1) for _ in range(num_feature)])
+        self.classification = binary_classification
+        self.device = torch.device(device)
+        if os.path.exists(self.name):
+            self.load_state_dict(torch.load(self.name,map_location='cpu'))
+            print("fine-tuned model")
+        elif os.path.exists(absdir + 'model/ChemBart.pth'):
+            self.BartNN.load_state_dict(torch.load(absdir + 'model/ChemBart.pth',map_location='cpu'))
+            print("pre-trained model")
+        else:
+            print("new model")
+        self.to(self.device)
+            
+    def forward(self, x, category: int):
+        last_hidden = (self.BartNN(input_ids=x, 
+                                  decoder_input_ids=x, 
+                                  return_dict=True, 
+                                  output_hidden_states=True)
+                                  .decoder_hidden_states[-1][0][-2]
+                                  # get task token output
+                        )
+        linear_out = self.linear_list[category](F.leaky_relu(last_hidden))
+        if self.classification:
+            linear_out = torch.sigmoid(linear_out)
+        return linear_out[0]
+
+    def _get_category(self, smiles):
+        if "<n00>" in smiles:
+            category = 0
+        elif "<n01>" in smiles:
+            category = 1
+        elif "<n02>" in smiles:
+            category = 2
+        elif "<n03>" in smiles:
+            category = 3
+        elif "<n04>" in smiles:
+            category = 4
+        else:
+            raise ValueError( '''
+                    Your input should be: ["<cls>molecule_smiles<task_token><end>", label]
+                    where <task_token> is <n00> <n01> <n02> <n03> <n04> representing different properties, 
+                    and label is float number
+                    ''')
+        return category
+
+
+    def single_train(self, data: list, epoch: int, tr: int, val: int, grad_accumulate: int = 4):
+        '''
+        data: (one piece of input as smiles string, label)
+        label: for regression/ bi-classification, float
+        '''
+        self.to(self.device)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-6, weight_decay=1e-6)
+        if self.classification:
+            criterion = torch.nn.BCELoss()
+        else:
+            criterion = torch.nn.MSELoss()
+        bestval = None
+        for i in range(epoch):
+            print("epoch", i, flush = True)
+            ep_loss = 0.0
+            cor = 0.0
+            count = 0
+            self.train()
+            for i in data[0:tr]:
+                category = self._get_category(i[0])
+                inp = self.tokenizer.encoder(i[0])
+                if len(inp) == 0:
+                    continue
+                count += 1
+                out = self(inp.to(self.device), category)
+                #print(out,i[1][0],flush = True)
+                cor += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
+                label = torch.tensor(i[1]).to(self.device)
+                loss = criterion(out,label) / grad_accumulate
+                ep_loss = ep_loss + loss.item()
+                loss.backward()
+                if count % grad_accumulate == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
+            if count % grad_accumulate != 0:
+                optimizer.step()
+                optimizer.zero_grad()
+            cor = self._post_proc(cor,count)
+            print("epoch loss:{}, train_acc:{},train_count:{}".format(ep_loss,cor,count))
+            self.eval()
+            corval = 0.0
+            count = 0
+            with torch.no_grad():
+                for i in data[tr:tr+val]:
+                    category = self._get_category(i[0])
+                    inp = self.tokenizer.encoder(i[0])
+                    if len(inp) == 0:
+                        continue
+                    count += 1
+                    out = self(inp.to(self.device), category)
+                    corval += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
+            corval = self._post_proc(corval,count)
+            print("validation_acc:",corval,",val_count:",count,flush=True)
+            if (bestval is None) or\
+                    (self.type == 1 and corval < bestval) or\
+                    (self.type > 1 and corval > bestval):
+                bestval = corval
+                torch.save(self.state_dict(), self.name)
+                print("model refreshed!", flush = True)
+    
+    def pred_one_instance(self, mol: str) -> float:
+        category = self._get_category(mol)
+        inp = self.tokenizer.encoder(mol)
+        if len(inp) == 0:
+            print("Warning! 0 token is available.")
+            return 0.0
+        with torch.no_grad():
+            out = self(inp.to(self.device), category)
+        return float(out)
+    
+    def test(self, test_data, return_detail = False):
+        acc = 0.0
+        self.eval()
+        self.to(self.device)
+        ans = []
+        count = 0
+        with torch.no_grad():
+            for i in test_data:
+                category = self._get_category(i[0])
+                inp = self.tokenizer.encoder(i[0])
+                if len(inp) == 0:
+                    continue
+                count+=1
+                out = self(inp.to(self.device), category)
+                acc += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
+                if return_detail:
+                    ans.append([i[1],out])
+            acc = self._post_proc(acc, count)
+            print("test_acc:", acc, flush=True)
+        return (acc, ans)
+    def _get_acc(self,out,label) -> float:
+        if self.type == 2:
+            if (out<0.5 and label<0.5) or (out>=0.5 and label>=0.5):
+                return 1.0
+            else:
+                return 0.0
+        elif self.type == 1:
+            return (out - label)**2
+        else:
+            return float(torch.argmax(out) == torch.argmax(label))
+    def _post_proc(self,acc:float,num:int) -> float:
+        acc = acc/num
+        if self.type == 1:
+            acc = acc**0.5
+            #rmse
+        return acc
+    def ret_x_y_list(self,data):
+        assert self.type == 1, "only for regression use"
+        ans = []
+        with torch.no_grad():
+            for i in data:
+                out = self(self.tokenizer.encoder(i[0]).to(self.device))
+                ans.append([i[1],out])
+        return ans
