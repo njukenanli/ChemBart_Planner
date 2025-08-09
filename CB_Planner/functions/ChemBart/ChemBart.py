@@ -15,7 +15,8 @@ class ChemBart():
     tokenizer=None
     BartNN=None
     config=None
-    def __init__(self, dev = "cpu"):
+    def __init__(self, dev = "cpu", name = "ChemBart"):
+        self.name = name
         self.tokenizer=CBTokenizer()
         self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
@@ -34,7 +35,7 @@ class ChemBart():
             out.append(temp)
         return out
     def load_model(self):
-        self.BartNN.load_state_dict(torch.load(absdir + 'model/ChemBart.pth',map_location='cpu'))
+        self.BartNN.load_state_dict(torch.load(absdir + f'model/{self.name}.pth',map_location='cpu'))
         #self.BartNN = self.BartNN.cpu()
     def single_train(self,data,epoch=1):#data form: [{"inputs"[]:,"outputs":[]}]
         list_data = [self.trans_to_list(i["outputs"]) for i in data]
@@ -73,14 +74,7 @@ class ChemBart():
             torch.cuda.empty_cache()
             torch.distributed.init_process_group(backend="nccl", init_method='env://')
             device = torch.device('cuda', args.local_rank)
-            #self.BartNN = self.BartNN.cuda(args.local_rank)
             self.BartNN = self.BartNN.to(device)
-            #model paralell
-            #self.BartNN= self.BartNN.cuda(args.local_rank*2)
-            #for i in range(2,12):
-            #    self.BartNN.model.decoder.layers[i] = self.BartNN.model.decoder.layers[i].cuda(args.local_rank*2+1)
-            #self.BartNN.encoder = self.BartNN.model.encoder.cuda(args.local_rank*2)
-            #self.BartNN = torch.nn.parallel.DistributedDataParallel(self.BartNN,device_ids=[args.local_rank], output_device=args.local_rank)
             self.BartNN = torch.nn.parallel.DistributedDataParallel(self.BartNN,
                     device_ids=[args.local_rank],output_device=args.local_rank)
             print("DDP_init succeeded",flush=True)
@@ -98,8 +92,6 @@ class ChemBart():
                 data=[]
                 for s in stringlist[500*count:500*(count+1)]:
                     data.extend(self.tokenizer.gen_train_data_fast(s))
-                #print(len(data),type(data[0]))
-                #print(len(data))
                 print(count,"/",datapiece, len(data), flush = True)
                 if DDP:
                     train_sampler = torch.utils.data.distributed.DistributedSampler(data)
@@ -137,6 +129,121 @@ class ChemBart():
                 del train_sampler
             print('Epoch train Loss: {}'.format(round(total_loss_train/(datapiece+1) ,3)),flush=True)
 
+    def instruct_sft_parallel(self, stringlist, epoch=100, batch_size=8, DDP=True):
+        """
+        Parallel instruction SFT:
+        - Builds one training item per string using tokenizer.prepare_instruct_sft_data(...)
+        - Computes sequence-level CrossEntropy over all decoder time steps at once
+        - Masks loss for the "<cls>molecule><task_token>" prefix; learns only on "new_molecule<end>"
+        """
+        self.BartNN = self.BartNN.train()
+
+        # --- DDP / device setup
+        if DDP:
+            set_start_method("forkserver")
+            parser = argparse.ArgumentParser()
+            parser.add_argument('--local_rank', default=-1, type=int, help='node rank for distributed training')
+            args = parser.parse_args()
+            print(args.local_rank)
+            torch.cuda.set_device(args.local_rank)
+            torch.cuda.empty_cache()
+            torch.distributed.init_process_group(backend="nccl", init_method='env://')
+            device = torch.device('cuda', args.local_rank)
+            self.BartNN = self.BartNN.to(device)
+            self.BartNN = torch.nn.parallel.DistributedDataParallel(
+                self.BartNN, device_ids=[args.local_rank], output_device=args.local_rank
+            )
+            is_main = (args.local_rank == 0)
+            print("DDP_init succeeded", flush=True)
+        else:
+            device = torch.device("cuda:0")
+            self.BartNN = self.BartNN.to(device)
+            is_main = True
+
+        # Use AdamW; higher LR than the token-by-token BCE you had is typical for CE SFT.
+        optimizer = torch.optim.AdamW(self.BartNN.parameters(), lr=1e-5, weight_decay=1e-5)
+
+        # Chunk your list like before to limit peak RAM while materializing samples
+        datapiece = int(len(stringlist) / 500) + 1
+
+        for e in range(epoch):
+            total_loss_train = 0.0
+            total_steps = 0
+            print('epoch:', e, flush=True)
+
+            for count in range(datapiece):
+                # Materialize this slice's dataset
+                data = []
+                for s in stringlist[500 * count: 500 * (count + 1)]:
+                    item = self.tokenizer.prepare_instruct_sft_data(s)
+                    if isinstance(item, dict) and item:
+                        data.append(item)
+                print(count, "/", datapiece, len(data), flush=True)
+                if len(data) == 0:
+                    continue
+
+                # Sampler / DataLoader
+                if DDP:
+                    train_sampler = torch.utils.data.distributed.DistributedSampler(data)
+                    train_dataloader = torch.utils.data.DataLoader(
+                        data, batch_size=batch_size, shuffle=False, sampler=train_sampler
+                    )
+                else:
+                    train_sampler = None
+                    train_dataloader = torch.utils.data.DataLoader(
+                        data, batch_size=batch_size, shuffle=True
+                    )
+
+                # Train loop
+                for batch in train_dataloader:
+                    optimizer.zero_grad()
+
+                    input_ids = batch["input_ids"].to(device)
+                    attention_mask = batch["attention_mask"].to(device)
+                    decoder_input_ids = batch["decoder_input_ids"].to(device)
+                    decoder_attention_mask = batch["decoder_attention_mask"].to(device)
+                    labels = batch["labels"].to(device)  # -100 where we ignore loss
+
+                    # HuggingFace BART returns CE loss when labels is provided (with ignore_index=-100)
+                    outputs = self.BartNN(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        decoder_input_ids=decoder_input_ids,
+                        decoder_attention_mask=decoder_attention_mask,
+                        labels=labels,
+                        return_dict=True,
+                    )
+                    loss = outputs.loss
+                    loss.backward()
+                    optimizer.step()
+
+                    total_loss_train += float(loss.item())
+                    total_steps += 1
+
+                print('\nPiece train Loss: {}'.format(
+                    round(total_loss_train / max(total_steps, 1), 3)
+                ), flush=True)
+
+                # Save checkpoint (only once on rank 0 if DDP)
+                if is_main:
+                    try:
+                        state = self.BartNN.module.state_dict() if DDP else self.BartNN.state_dict()
+                        torch.save(state, absdir + f'model/ChemBart_sft_{e}.pth')
+                    except Exception as se:
+                        print("Checkpoint save failed:", se, flush=True)
+
+                # Cleanup
+                del data
+                del train_dataloader
+                if DDP and train_sampler is not None:
+                    del train_sampler
+
+            print('Epoch train Loss: {}'.format(
+                round(total_loss_train / max(total_steps, 1), 3)
+            ), flush=True)
+
+
+    
     def predict(self, s, decoder_input="<cls>",
                 top_k=10, max_len=60, stop_with_sep = True):
         '''

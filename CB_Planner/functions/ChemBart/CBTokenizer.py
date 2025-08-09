@@ -237,5 +237,79 @@ class CBTokenizer():
             if i == self.vocab["<pad>"] and padstop:
                 break
         return s
-
     
+    def prepare_instruct_sft_data(self, s, alllen: int = 1024):
+        """
+        Expect s like: "<cls>molecule><task_token>>new_molecule<end>"
+        Returns a dict with encoder/decoder tensors and labels, padded to `alllen`.
+
+        Encoder input:  "<cls>molecule><task_token>><msk><end>"
+        Decoder input:  "<cls>molecule><task_token>>new_molecule"
+        Labels (loss):  mask loss for "<cls>molecule><task_token>" part, compute loss on "new_molecule<end>".
+        """
+        try:
+            # encoder() returns shape (1, L) when no0mode=True
+            encoded = self.encoder(s)
+        except Exception as e:
+            print("prepare_instruct_sft_data encoder error:", e)
+            return []
+
+        if len(encoded) == 0:
+            return []
+
+        ids = encoded[0].tolist()  # full target sequence including <end>
+        if len(ids) > 1024:
+            print("Length of sequence > 1024!", s)
+            return []
+        gt_id = self.vocab[">"]
+        end_id = self.vocab["<end>"]
+        msk_id = self.vocab["<msk>"]
+
+        # Basic sanity: need at least two '>' delimiters and terminal <end>
+        gt_positions = [i for i, t in enumerate(ids) if t == gt_id]
+        if len(gt_positions) != 2 or ids[-1] != end_id:
+            print("malformed example for this task format:", s)
+            return []
+
+        # s2 = index of the '>' right AFTER <task_token>
+        # Sequence layout tokens: [<cls>, ..., '>' (s1), <task_token>, '>' (s2), new_mol..., <end>]
+        s2 = gt_positions[1]
+
+        # --- Build encoder sequence: "<cls>molecule><task_token>><msk><end>"
+        enc_ids = ids[:s2 + 1] + [msk_id, end_id]
+
+        # --- Build decoder input ids and labels
+        # Standard seq2seq convention: decoder_input_ids are target shifted right;
+        # here we supply them explicitly as target without final <end>.
+        dec_in_ids = ids[:-1]                   # "<cls>...>new_molecule"
+        labels = ids[1:]                        # next tokens to predict, aligned with dec steps
+
+        # Mask loss for the prefix "<cls>molecule><task_token>".
+        # The decoder output at timestep t predicts labels[t] (= ids[t+1]).
+        # Positions t = 0 .. (s2-1) correspond to outputs conditioned on tokens
+        # up to and including <task_token>. Keep '>' at s2 UNMASKED so the first
+        # predicted token contributing to loss is the start of new_molecule.
+        for i in range(s2):
+            labels[i] = -100  # ignore_index for CE
+
+        # Pad sequences
+        def pad_1d(seq, pad_val, L):
+            return seq + [pad_val] * (L - len(seq))
+
+        enc_att = [1] * len(enc_ids)
+        enc_ids = pad_1d(enc_ids, 0, alllen)
+        enc_att = pad_1d(enc_att, 0, alllen)
+
+        dec_att = [1] * len(dec_in_ids)
+        dec_in_ids = pad_1d(dec_in_ids, 0, alllen)
+        dec_att = pad_1d(dec_att, 0, alllen)
+
+        labels = pad_1d(labels, -100, alllen)  # never learn on padded tail
+
+        return {
+            "input_ids": torch.tensor(enc_ids, dtype=torch.long),
+            "attention_mask": torch.tensor(enc_att, dtype=torch.long),
+            "decoder_input_ids": torch.tensor(dec_in_ids, dtype=torch.long),
+            "decoder_attention_mask": torch.tensor(dec_att, dtype=torch.long),
+            "labels": torch.tensor(labels, dtype=torch.long),
+        }
