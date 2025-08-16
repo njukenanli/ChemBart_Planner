@@ -1,6 +1,6 @@
 import os
 absdir = os.path.dirname(os.path.abspath(__file__))+"/"
-from CBTokenizer import CBTokenizer
+from .CBTokenizer import CBTokenizer
 from transformers import BartForConditionalGeneration
 from transformers import BartConfig
 import torch
@@ -11,20 +11,22 @@ from copy import deepcopy
 from multiprocessing import set_start_method
 from typing import *
 import random
+import math
 class ChemBart():
     tokenizer=None
     BartNN=None
     config=None
-    def __init__(self, dev = "cpu", name = "ChemBart"):
-        self.name = name
+    def __init__(self, path, dev = "cpu"):
         self.tokenizer=CBTokenizer()
         self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
         self.dev = torch.device(dev)
         self.BartNN.to(self.dev)
+        self.model_path = path
         try:
             self.load_model()
             print("load previous model")
+            print(self.model_path)
         except:
             print("new model")
     def trans_to_list(self,l):#<cls> is not included
@@ -35,7 +37,8 @@ class ChemBart():
             out.append(temp)
         return out
     def load_model(self):
-        self.BartNN.load_state_dict(torch.load(absdir + f'model/{self.name}.pth',map_location='cpu'))
+        #self.BartNN.load_state_dict(torch.load(absdir + 'model/ChemBart.pth',map_location='cpu'))
+        self.BartNN.load_state_dict(torch.load(self.model_path, map_location='cpu'))
         #self.BartNN = self.BartNN.cpu()
     def single_train(self,data,epoch=1):#data form: [{"inputs"[]:,"outputs":[]}]
         list_data = [self.trans_to_list(i["outputs"]) for i in data]
@@ -74,7 +77,14 @@ class ChemBart():
             torch.cuda.empty_cache()
             torch.distributed.init_process_group(backend="nccl", init_method='env://')
             device = torch.device('cuda', args.local_rank)
+            #self.BartNN = self.BartNN.cuda(args.local_rank)
             self.BartNN = self.BartNN.to(device)
+            #model paralell
+            #self.BartNN= self.BartNN.cuda(args.local_rank*2)
+            #for i in range(2,12):
+            #    self.BartNN.model.decoder.layers[i] = self.BartNN.model.decoder.layers[i].cuda(args.local_rank*2+1)
+            #self.BartNN.encoder = self.BartNN.model.encoder.cuda(args.local_rank*2)
+            #self.BartNN = torch.nn.parallel.DistributedDataParallel(self.BartNN,device_ids=[args.local_rank], output_device=args.local_rank)
             self.BartNN = torch.nn.parallel.DistributedDataParallel(self.BartNN,
                     device_ids=[args.local_rank],output_device=args.local_rank)
             print("DDP_init succeeded",flush=True)
@@ -92,6 +102,8 @@ class ChemBart():
                 data=[]
                 for s in stringlist[500*count:500*(count+1)]:
                     data.extend(self.tokenizer.gen_train_data_fast(s))
+                #print(len(data),type(data[0]))
+                #print(len(data))
                 print(count,"/",datapiece, len(data), flush = True)
                 if DDP:
                     train_sampler = torch.utils.data.distributed.DistributedSampler(data)
@@ -128,127 +140,9 @@ class ChemBart():
                 del train_dataloader
                 del train_sampler
             print('Epoch train Loss: {}'.format(round(total_loss_train/(datapiece+1) ,3)),flush=True)
-
-    def instruct_sft_parallel(self, stringlist, epoch=100, batch_size=8, DDP=True):
-        """
-        Parallel instruction SFT:
-        - Builds one training item per string using tokenizer.prepare_instruct_sft_data(...)
-        - Computes sequence-level CrossEntropy over all decoder time steps at once
-        - Masks loss for the "<cls>molecule><task_token>" prefix; learns only on "new_molecule<end>"
-        """
-        self.BartNN = self.BartNN.train()
-
-        # --- DDP / device setup
-        if DDP:
-            set_start_method("forkserver")
-            parser = argparse.ArgumentParser()
-            parser.add_argument('--local_rank', default=-1, type=int, help='node rank for distributed training')
-            args = parser.parse_args()
-            print(args.local_rank)
-            torch.cuda.set_device(args.local_rank)
-            torch.cuda.empty_cache()
-            torch.distributed.init_process_group(backend="nccl", init_method='env://')
-            device = torch.device('cuda', args.local_rank)
-            self.BartNN = self.BartNN.to(device)
-            self.BartNN = torch.nn.parallel.DistributedDataParallel(
-                self.BartNN, device_ids=[args.local_rank], output_device=args.local_rank
-            )
-            is_main = (args.local_rank == 0)
-            print("DDP_init succeeded", flush=True)
-        else:
-            device = torch.device("cuda:0")
-            self.BartNN = self.BartNN.to(device)
-            is_main = True
-
-        # Use AdamW; higher LR than the token-by-token BCE you had is typical for CE SFT.
-        optimizer = torch.optim.AdamW(self.BartNN.parameters(), lr=1e-5, weight_decay=1e-5)
-
-        # Chunk your list like before to limit peak RAM while materializing samples
-        datapiece = int(len(stringlist) / 500) + 1
-
-        for e in range(epoch):
-            total_loss_train = 0.0
-            total_steps = 0
-            print('epoch:', e, flush=True)
-
-            for count in range(datapiece):
-                # Materialize this slice's dataset
-                data = []
-                for s in stringlist[500 * count: 500 * (count + 1)]:
-                    item = self.tokenizer.prepare_instruct_sft_data(s)
-                    if isinstance(item, dict) and item:
-                        data.append(item)
-                print(count, "/", datapiece, len(data), flush=True)
-                if len(data) == 0:
-                    continue
-
-                # Sampler / DataLoader
-                if DDP:
-                    train_sampler = torch.utils.data.distributed.DistributedSampler(data)
-                    train_dataloader = torch.utils.data.DataLoader(
-                        data, batch_size=batch_size, shuffle=False, sampler=train_sampler
-                    )
-                else:
-                    train_sampler = None
-                    train_dataloader = torch.utils.data.DataLoader(
-                        data, batch_size=batch_size, shuffle=True
-                    )
-
-                # Train loop
-                for batch in train_dataloader:
-                    optimizer.zero_grad()
-
-                    input_ids = batch["input_ids"].to(device)
-                    attention_mask = batch["attention_mask"].to(device)
-                    decoder_input_ids = batch["decoder_input_ids"].to(device)
-                    decoder_attention_mask = batch["decoder_attention_mask"].to(device)
-                    labels = batch["labels"].to(device)  # -100 where we ignore loss
-
-                    # HuggingFace BART returns CE loss when labels is provided (with ignore_index=-100)
-                    outputs = self.BartNN(
-                        input_ids=input_ids,
-                        attention_mask=attention_mask,
-                        decoder_input_ids=decoder_input_ids,
-                        decoder_attention_mask=decoder_attention_mask,
-                        labels=labels,
-                        return_dict=True,
-                    )
-                    loss = outputs.loss
-                    loss.backward()
-                    optimizer.step()
-
-                    total_loss_train += float(loss.item())
-                    total_steps += 1
-
-                print('\nPiece train Loss: {}'.format(
-                    round(total_loss_train / max(total_steps, 1), 3)
-                ), flush=True)
-
-                # Save checkpoint (only once on rank 0 if DDP)
-                if is_main:
-                    try:
-                        state = self.BartNN.module.state_dict() if DDP else self.BartNN.state_dict()
-                        torch.save(state, absdir + f'model/ChemBart_sft_{e}.pth')
-                    except Exception as se:
-                        print("Checkpoint save failed:", se, flush=True)
-
-                # Cleanup
-                del data
-                del train_dataloader
-                if DDP and train_sampler is not None:
-                    del train_sampler
-
-            print('Epoch train Loss: {}'.format(
-                round(total_loss_train / max(total_steps, 1), 3)
-            ), flush=True)
-
-
-    
+    '''
     def predict(self, s, decoder_input="<cls>",
                 top_k=10, max_len=60, stop_with_sep = True):
-        '''
-        for generation
-        '''
         with torch.no_grad():
             inputvector=self.tokenizer.encoder(s)[0].tolist()
             self.BartNN=self.BartNN.eval()
@@ -262,6 +156,43 @@ class ChemBart():
             for i in range(top_k):
                 outl.append([self.tokenizer.decoder(outputprob[i][0]),outputprob[i][1]])
             return outl
+    '''
+    def predict(self, s, decoder_input="<cls>",
+                sampling_method='beam', top_k=10, top_p=0.9,
+                max_len=60, stop_with_sep=True, num_samples=5):
+        '''
+        for generation.
+
+        Args:
+            s: input string
+            decoder_input: initial decoder input token (e.g., <cls>)
+            sampling_method: 'beam', 'top_k', or 'top_p'
+            top_k: number of top tokens to consider in top_k sampling
+            top_p: cumulative probability threshold in top_p sampling
+            max_len: maximum length of generated sequence
+            stop_with_sep: whether to stop when encountering a special token (like <end> or >)
+            num_samples: number of sequences to sample
+        '''
+        with torch.no_grad():
+            inputvector = self.tokenizer.encoder(s)[0].tolist()
+            self.BartNN = self.BartNN.eval()
+            decodervector = self.tokenizer.encoder(decoder_input)[0][:-1].tolist()
+
+            if sampling_method == 'beam':
+                outputprob = self._beam_search(inputvector, decodervector, num_samples, max_len, stop_with_sep, self.dev)
+            elif sampling_method == 'top_k':
+                outputprob = self._top_k_sampling(inputvector, decodervector, top_k, max_len, stop_with_sep, self.dev, num_samples=num_samples)
+            elif sampling_method == 'top_p':
+                outputprob = self._top_p_sampling(inputvector, decodervector, top_p, max_len, stop_with_sep, self.dev, num_samples=num_samples)
+            else:
+                raise ValueError("Invalid sampling method. Choose from 'beam', 'top_k', or 'top_p'.")
+
+            outl = []
+            for i in range(min(num_samples, len(outputprob))):
+                decoded_text = self.tokenizer.decoder(outputprob[i][0])
+                outl.append([decoded_text, outputprob[i][1]])
+            return outl
+        
     def _beam_search(self,s,decodervector,k,maxlen, stop_with_sep, dev):
         #print(s,decodervector)
         out=torch.softmax(self.BartNN(input_ids=torch.tensor([s]).to(dev),
@@ -333,13 +264,14 @@ class ChemBart():
             i += 1
         endans.sort(key=lambda x:x[1],reverse=True)
         return endans
-
+    
+       
 
 class CB_END(nn.Module):
     '''
     this api uses the output of end token
     '''
-    def __init__(self, out_type: int,
+    def __init__(self, path: str, out_type: int, 
                  name: str, device: str = "cuda:0",
                  ran: int = 0):
         '''
@@ -352,7 +284,8 @@ class CB_END(nn.Module):
         n>=3: ont-hot-encoding classification with n classes
         '''
         super().__init__()
-        self.name = absdir + "model/"+name+'.pth'
+        #self.name = absdir + "model/"+name+'.pth'
+        self.name = path
         self.tokenizer = CBTokenizer()
         self.type = out_type
         self.config=BartConfig.from_pretrained(absdir + "config.json")
@@ -491,9 +424,10 @@ class CB_mul_END(nn.Module):
     '''
     this api uses the output of multi tokens at the end
     '''
-    def __init__(self, name: str, device: str = "cuda:0"):
+    def __init__(self, path: str, name: str, device: str = "cuda:0"):
         super().__init__()
-        self.name = absdir + "model/"+name+'.pth'
+        #self.name = absdir + "model/"+name+'.pth'
+        self.name = path
         self.tokenizer = CBTokenizer()
         self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
@@ -503,9 +437,11 @@ class CB_mul_END(nn.Module):
         if os.path.exists(self.name):
             self.load_state_dict(torch.load(self.name,map_location='cpu'))
             print("fine-tuned model")
+            print(self.name)
         elif os.path.exists(absdir + 'model/ChemBart.pth'):
             self.BartNN.load_state_dict(torch.load(absdir + 'model/ChemBart.pth',map_location='cpu'))
             print("pre-trained model")
+            print(absdir + 'model/ChemBart.pth')
         else:
             print("new model")
             
@@ -802,8 +738,8 @@ class CB_LSTM(nn.Module):
                 ans.append([i[1],out])
 
 class CB_MCTS():
-    def __init__(self, dev = "cpu"):
-        self.core = CB_END(out_type = 1, name = "CB_MCTS" , device = dev, ran = 0)
+    def __init__(self, path, dev = "cpu"):
+        self.core = CB_END(path, out_type = 1, name = "CB_MCTS" , device = dev, ran = 0)
       
     def policy(self, input_list):
         outlist = torch.stack([self.core(i.to(self.core.device)) for i in input_list])
@@ -1069,181 +1005,3 @@ class CB_Regression(nn.Module):
             item_RMSE = self.RMSE(reslist[idx])
             RMSE_list.append(item_RMSE)
         return (RMSE_list, reslist)
-
-class CB_multi_task_sep_regression(nn.Module):
-    '''
-    Your input should be: ["<cls>molecule_smiles<task_token><end>", label]
-    where <task_token> is <n00> <n01> <n02> <n03> <n04> representing different properties, 
-    and label is float number
-    '''
-    def __init__(self, name: str, num_feature: int, binary_classification: bool, device: str = "cuda:0"):
-        '''
-        out_type:
-        1: regression
-        2: binary classification
-        '''
-        super().__init__()
-        self.name = absdir + "model/"+name+'.pth'
-        self.tokenizer = CBTokenizer()
-        self.config=BartConfig.from_pretrained(absdir + "config.json")
-        self.BartNN=BartForConditionalGeneration(self.config)
-        self.linear_list = nn.ModuleList([nn.Linear(1024, 1) for _ in range(num_feature)])
-        self.classification = binary_classification
-        self.device = torch.device(device)
-        if os.path.exists(self.name):
-            self.load_state_dict(torch.load(self.name,map_location='cpu'))
-            print("fine-tuned model")
-        elif os.path.exists(absdir + 'model/ChemBart.pth'):
-            self.BartNN.load_state_dict(torch.load(absdir + 'model/ChemBart.pth',map_location='cpu'))
-            print("pre-trained model")
-        else:
-            print("new model")
-        self.to(self.device)
-            
-    def forward(self, x, category: int):
-        last_hidden = (self.BartNN(input_ids=x, 
-                                  decoder_input_ids=x, 
-                                  return_dict=True, 
-                                  output_hidden_states=True)
-                                  .decoder_hidden_states[-1][0][-2]
-                                  # get task token output
-                        )
-        linear_out = self.linear_list[category](F.leaky_relu(last_hidden))
-        if self.classification:
-            linear_out = torch.sigmoid(linear_out)
-        return linear_out[0]
-
-    def _get_category(self, smiles):
-        if "<n00>" in smiles:
-            category = 0
-        elif "<n01>" in smiles:
-            category = 1
-        elif "<n02>" in smiles:
-            category = 2
-        elif "<n03>" in smiles:
-            category = 3
-        elif "<n04>" in smiles:
-            category = 4
-        else:
-            raise ValueError( '''
-                    Your input should be: ["<cls>molecule_smiles<task_token><end>", label]
-                    where <task_token> is <n00> <n01> <n02> <n03> <n04> representing different properties, 
-                    and label is float number
-                    ''')
-        return category
-
-
-    def single_train(self, data: list, epoch: int, tr: int, val: int, grad_accumulate: int = 4):
-        '''
-        data: (one piece of input as smiles string, label)
-        label: for regression/ bi-classification, float
-        '''
-        self.to(self.device)
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-6, weight_decay=1e-6)
-        if self.classification:
-            criterion = torch.nn.BCELoss()
-        else:
-            criterion = torch.nn.MSELoss()
-        bestval = None
-        for i in range(epoch):
-            print("epoch", i, flush = True)
-            ep_loss = 0.0
-            cor = 0.0
-            count = 0
-            self.train()
-            for i in data[0:tr]:
-                category = self._get_category(i[0])
-                inp = self.tokenizer.encoder(i[0])
-                if len(inp) == 0:
-                    continue
-                count += 1
-                out = self(inp.to(self.device), category)
-                #print(out,i[1][0],flush = True)
-                cor += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
-                label = torch.tensor(i[1]).to(self.device)
-                loss = criterion(out,label) / grad_accumulate
-                ep_loss = ep_loss + loss.item()
-                loss.backward()
-                if count % grad_accumulate == 0:
-                    optimizer.step()
-                    optimizer.zero_grad()
-            if count % grad_accumulate != 0:
-                optimizer.step()
-                optimizer.zero_grad()
-            cor = self._post_proc(cor,count)
-            print("epoch loss:{}, train_acc:{},train_count:{}".format(ep_loss,cor,count))
-            self.eval()
-            corval = 0.0
-            count = 0
-            with torch.no_grad():
-                for i in data[tr:tr+val]:
-                    category = self._get_category(i[0])
-                    inp = self.tokenizer.encoder(i[0])
-                    if len(inp) == 0:
-                        continue
-                    count += 1
-                    out = self(inp.to(self.device), category)
-                    corval += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
-            corval = self._post_proc(corval,count)
-            print("validation_acc:",corval,",val_count:",count,flush=True)
-            if (bestval is None) or\
-                    (self.type == 1 and corval < bestval) or\
-                    (self.type > 1 and corval > bestval):
-                bestval = corval
-                torch.save(self.state_dict(), self.name)
-                print("model refreshed!", flush = True)
-    
-    def pred_one_instance(self, mol: str) -> float:
-        category = self._get_category(mol)
-        inp = self.tokenizer.encoder(mol)
-        if len(inp) == 0:
-            print("Warning! 0 token is available.")
-            return 0.0
-        with torch.no_grad():
-            out = self(inp.to(self.device), category)
-        return float(out)
-    
-    def test(self, test_data, return_detail = False):
-        acc = 0.0
-        self.eval()
-        self.to(self.device)
-        ans = []
-        count = 0
-        with torch.no_grad():
-            for i in test_data:
-                category = self._get_category(i[0])
-                inp = self.tokenizer.encoder(i[0])
-                if len(inp) == 0:
-                    continue
-                count+=1
-                out = self(inp.to(self.device), category)
-                acc += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
-                if return_detail:
-                    ans.append([i[1],out])
-            acc = self._post_proc(acc, count)
-            print("test_acc:", acc, flush=True)
-        return (acc, ans)
-    def _get_acc(self,out,label) -> float:
-        if self.type == 2:
-            if (out<0.5 and label<0.5) or (out>=0.5 and label>=0.5):
-                return 1.0
-            else:
-                return 0.0
-        elif self.type == 1:
-            return (out - label)**2
-        else:
-            return float(torch.argmax(out) == torch.argmax(label))
-    def _post_proc(self,acc:float,num:int) -> float:
-        acc = acc/num
-        if self.type == 1:
-            acc = acc**0.5
-            #rmse
-        return acc
-    def ret_x_y_list(self,data):
-        assert self.type == 1, "only for regression use"
-        ans = []
-        with torch.no_grad():
-            for i in data:
-                out = self(self.tokenizer.encoder(i[0]).to(self.device))
-                ans.append([i[1],out])
-        return ans

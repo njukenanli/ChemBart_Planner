@@ -1,10 +1,10 @@
 import sys
-from ChemBart import ChemBart, CB_mul_END, CB_MCTS
+from .ChemBart_2 import ChemBart, CB_mul_END, CB_MCTS
 import torch
 
 class CBTempYield():
-    def __init__(self, name = "temp_yield_bart", dev = "cuda:0"):
-        self.model = CB_mul_END(name, dev)
+    def __init__(self, ty_path, name = "temp_yield_bart", dev = "cuda:0"):
+        self.model = CB_mul_END(ty_path, name, dev)
         self.model.eval()
 
     def pred(self, reactant, reagant, product):
@@ -15,17 +15,17 @@ class CBTempYield():
         return out.tolist()
 
 class CBRetro():
-    def __init__(self, dev = "cuda:0"):
-        self.model = ChemBart(dev)
+    def __init__(self, path, dev = "cuda:0"):
+        self.model = ChemBart(path,dev)
         self.model.BartNN.eval()
 
     def share_memory(self):
         self.model.BartNN.share_memory()
 
-    def precursor(self, product, k, lock = None):
+    def precursor(self, product, lock = None, top_k=10, top_p=0.9, sampling_method='beam', num_samples=5):
         if lock is not None:
             lock.acquire()
-        out = self.model.predict("<msk>>>"+product, max_len = 1018, decoder_input="<cls>", top_k = k) 
+        out = self.model.predict("<msk>>>"+product, sampling_method=sampling_method, max_len = 1018, decoder_input="<cls>", top_k = top_k, top_p = top_p,num_samples=num_samples) 
         if lock is not None:
             lock.release()
         for j in range(len(out)):
@@ -56,6 +56,11 @@ class CBRetro():
         return out
 
     def product(self, reactant, reagent, k, lock = None):
+        # 确保 reactant 和 reagent 都是字符串
+
+        if reagent is None:
+            reagent = ""
+
         if lock is not None:
             lock.acquire()
         out = self.model.predict(reactant+">"+reagent+"><msk>", max_len = 1018 - len(reactant) - len(reagent), decoder_input = "<cls>" + reactant + ">" + reagent + ">", top_k = k)
@@ -73,8 +78,8 @@ class CBRetro():
         return out
 
 class CBRL():
-    def __init__(self, dev):
-        self.model = CB_MCTS(dev)
+    def __init__(self, path, dev):
+        self.model = CB_MCTS(path, dev)
         self.tokenizer = self.model.core.tokenizer
         self.model.core.eval()
     
