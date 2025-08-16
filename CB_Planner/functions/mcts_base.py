@@ -7,10 +7,10 @@ import os
 from copy import deepcopy
 
 class NODE():
-    childlist = []
+    childlist = []  
     reagent = []
-    N: int = 0
-    V: Optional[int]
+    N: int = 0  # visit times
+    V: Optional[int] # Value
     Nlist: List[int]
     qlist: List[float]
     Plist: List[float]
@@ -51,6 +51,16 @@ class ROUTE():
         self.train_data = []
         self.maxlen = maxlen
         self.is_end = is_end
+    def deepcopy(self):
+        newroute = ROUTE(self.root, self.is_end, self.maxlen)
+        newroute.states_to_solve = deepcopy(self.states_to_solve)
+        newroute.success = self.success
+        newroute.route = deepcopy(self.route)
+        newroute.info = deepcopy(self.info)
+        newroute.mean_prob = self.mean_prob
+        newroute.route_len = self.route_len
+        newroute.train_data = deepcopy(self.train_data)
+        return newroute
     def __lt__(self, other):
         return self.mean_prob >= other.mean_prob
     def __str__(self):
@@ -107,7 +117,7 @@ class MCTS_BASE():
         def __lt__(self, other):
             return self.prob >= other.prob
         def gen_route(self, oldroute, returninfo, search_space):
-            newroute = deepcopy(oldroute)
+            newroute = oldroute.deepcopy()
             newroute.success = self.success
             newroute.mean_prob = self.prob
             if self.route_len > 0:
@@ -209,9 +219,8 @@ class MCTS_BASE():
             gc.collect()
             return
 
-    def play(self, root, idx :int, alternatives: int = 1, train: bool = True, 
-            max_train_data_num: int = 5000, 
-            lock1 = None, lock2 = None, lock3 = None):
+    def play(self, root, idx :int, file_path :str, alternatives: int = 1, train: bool = True, 
+            max_train_data_num: int = 5000):
         '''
         public: This is the MCTS entrance for the user.
         return;
@@ -233,7 +242,7 @@ class MCTS_BASE():
         for iteration in range(self.max_route_len):
             return_list = []
             for a in range(len(routelist)):
-                return_list.append([self._dfs_main(status, lock1, lock2, lock3) for status in routelist[a].states_to_solve])
+                return_list.append([self._dfs_main(status) for status in routelist[a].states_to_solve])
             
             #Step4 analyse these multiple routes computed and adopt beam search
             # return_list dim : 
@@ -308,7 +317,9 @@ class MCTS_BASE():
                     for next_state in self.search_space[return_list[a][item.parent_idx][0]].childlist[item.idx]:
                         if not self.is_end(next_state):
                             branch_list.append(next_state)
-                    prob_prod = prob_prod / picked_policy_list[item.parent_idx][0]
+                    #print(picked_policy_list[item.parent_idx])
+                    #prob_prod = prob_prod / picked_policy_list[item.parent_idx][0]
+                    prob_prod = prob_prod / (picked_policy_list[item.parent_idx][0] + 1e-8)
                     if branch_list:
                         prob_prod *= return_list[a][item.parent_idx][1][item.idx]
                         picked_policy_list[item.parent_idx] = (return_list[a][item.parent_idx][1][item.idx], branch_list)
@@ -368,11 +379,29 @@ class MCTS_BASE():
             for train_data_idx in range(len(route.train_data)):
                 route.train_data[train_data_idx][1][0] = route.success
             train_data.extend(route.train_data)
-        if os.path.exists("answer/train_data.json"):
-            with open("answer/train_data.json") as f:
-                train_data.extend(json.load(f))
-        with open("answer/train_data.json", mode ="w+") as f:
-            json.dump(train_data[0:max_train_data_num], f)
+
+        # 储存mcts过程路径
+        save_path = os.path.join(file_path, "train_data.json")  # 使用标准路径拼接
+
+
+        # 创建目标目录（自动处理多级目录）
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)  # 确保父目录存在
+        
+        # 读取已有数据（如果存在）
+        if os.path.exists(save_path):
+            with open(save_path, 'r') as f:
+                existing_data = json.load(f)
+                train_data.extend(existing_data)
+        
+        # 写入新数据（限制最大数量）
+        with open(save_path, 'w+') as f:
+            json.dump(
+                #train_data[:self.config["getdata"]["max_train_data_num"]],  # 应用数据量限制
+                train_data,
+                f,
+                indent=2  # 添加缩进提高可读性
+            )
+            print(f"成功保存训练数据到：{os.path.abspath(save_path)}")  # 打印绝对路径确认
         return ret
 
     def _check_cycle(self, childlist, ancestors): 
@@ -381,90 +410,135 @@ class MCTS_BASE():
                 return True
         return False
  
-    def _dfs_main(self, root, lock1, lock2, lock3):
-        '''
-        protected: this function cannot be accessed by user, but can be inherited by child class
-        return (value ,policy, root. chilren) of current state
-        '''
-        #dfs entrance
+    def _dfs_main(self, root):  
         ancestor = set()
+        
+        # === 打印根节点初始状态 ===
+        if root not in self.search_space:
+            node = self.gen_choice(root)
+            print(f"\n[DFS_MAIN] Starting MCTS for root: {root}")
+            print(f"         Total branches: {len(node.childlist)}")
+            for i, (childs, p) in enumerate(zip(node.childlist, node.Plist)):
+                # 获取初始价值（用于调试）
+                v_init = self.gen_value(childs[0]) if childs else -1  # 取第一个前体估计
+                print(f"  Branch {i}: {childs} | P={p:.3f} | V_init≈{v_init:.3f}")
+        # =========================
+
+        # 执行 mcts_times 次模拟
         for count in range(self.mcts_times):
-            self._dfs(root, 1, ancestor, lock1, lock2, lock3)
-        #generate policy vector
-        policy = [0.0]*self.search_space[root].choice_len
+            self._dfs(root, 1, ancestor)
+        
+        # 生成最终策略
+        policy = [0.0] * self.search_space[root].choice_len
         for i in range(self.search_space[root].choice_len):
-            policy[i] = self.search_space[root].Nlist[i]**(1/self.temp_coef)
+            policy[i] = self.search_space[root].Nlist[i] ** (1/self.temp_coef)
         norm = sum(policy)
+        policy = [p / norm for p in policy]
+
+        # === 打印最终统计 ===
+        print(f"\n[DFS_MAIN] MCTS completed for {root} (mcts_times={self.mcts_times})")
         for i in range(self.search_space[root].choice_len):
-            policy[i] /= norm
+            n = self.search_space[root].Nlist[i]
+            q = self.search_space[root].qlist[i]
+            p = self.search_space[root].Plist[i]
+            print(f"  Branch {i}: N={n:3d} | Q={q:.3f} | P={p:.3f} | Policy={policy[i]:.3f}")
+        # =====================
+
         return (root, policy)
     
-    def _dfs(self, root: str, depth: int, ancestors, lock1, lock2, lock3): 
-        '''
-        protected
-        This is the backbone of MCTS: For reference see AlphagoZero
-        Note: when changing shared data, there's a need to lock the processes. 
-        If we only visit shared data, there's no need to lock.
-        '''
-        #print("hit", root, flush=True)
+    def _dfs(self, root: str, depth: int, ancestors): 
         if root not in self.search_space:
-            self.search_space[root] = self.gen_choice(root, lock1, lock2, lock3)
+            self.search_space[root] = self.gen_choice(root)
         self.search_space[root].N += 1
-        #print(self.search_space[root].childlist)
+
         if not self.search_space[root].choice_len:
             self.search_space[root].V = -1
-        else:
-            #Select
-            maxPUCT = 0.0
-            maxindex = -1
-            for i in range(self.search_space[root].choice_len):
-                if self._check_cycle(self.search_space[root].childlist[i], ancestors): 
-                    continue # if there is a cycle in this path, we would avoid this path.
-                tempPUCT = self.search_space[root].qlist[i] + self._gen_U(self.search_space[root].Plist[i],
-                    self.search_space[root].N, self.search_space[root].Nlist[i])
-                if tempPUCT > maxPUCT:
-                    maxPUCT = tempPUCT
-                    maxindex = i
-            if maxindex == -1: 
-                self.search_space[root].V = -0.99   # means very unlikely but not failed
-                return 
-            next_state_list = self.search_space[root].childlist[maxindex]
-            #Expand and Evaluate
-            vlist = []
-            rec_states = []
-            sumv = 0
-            for next_state in next_state_list:
-                if self.is_end(next_state):
-                    vlist.append(1)
-                elif depth == self.max_search_depth:
-                    if next_state not in self.search_space:
-                        if next_state in self.NN_value:
-                            V = self.NN_value[next_state]
-                        else:
-                            V = self.gen_value(next_state, lock3)
-                            self.NN_value[next_state] = V
-                    elif self.search_space[next_state].V is None:
-                        if next_state in self.NN_value:
-                            V = self.NN_value[next_state]
-                            self.search_space[next_state].V = V
-                        else:
-                            self.search_space[next_state].V = self.gen_value(next_state, lock3)
-                    else:
-                        V = self.search_space[next_state].V
-                    if V == -1:
-                        sumv = -1
-                        break
-                    vlist.append(V)
+            return
+
+        # === Select: 打印 PUCT 计算过程 ===
+        maxPUCT = -1e9
+        maxindex = -1
+        puct_scores = []
+        
+        print(f"\n[DFS] Depth={depth} | Node: {root} | Total visits: {self.search_space[root].N}")
+        print(f"      {'Idx':<3} {'Precursors':<30} {'P':<6} {'N':<4} {'Q':<6} {'U':<6} {'PUCT':<6}")
+        print(f"      {'-'*60}")
+
+        sum_n = self.search_space[root].N
+        for i in range(self.search_space[root].choice_len):
+            childs = self.search_space[root].childlist[i]
+            p = self.search_space[root].Plist[i]
+            n_sa = self.search_space[root].Nlist[i]
+            q = self.search_space[root].qlist[i]
+
+            # 检查循环
+            if self._check_cycle(childs, ancestors): 
+                print(f"      {i:<3} {'(cycle) ' + '.'.join(childs):<30} {p:<6.3f} {n_sa:<4} {q:<6.3f} {'-':<6} {'-':<6}")
+                continue
+
+            # 计算 U 和 PUCT
+            U = self._gen_U(p, sum_n, n_sa)
+            PUCT = q + U
+            puct_scores.append((i, PUCT, p, n_sa, q, U))
+
+            if PUCT > maxPUCT:
+                maxPUCT = PUCT
+                maxindex = i
+
+            # 打印每一行
+            precursors = '.'.join(childs) if childs else '[]'
+            print(f"      {i:<3} {precursors:<30} {p:<6.3f} {n_sa:<4} {q:<6.3f} {U:<6.3f} {PUCT:<6.3f}")
+
+        if maxindex == -1: 
+            self.search_space[root].V = -0.99
+            print(f"      [!] All branches skipped (cycle or invalid)")
+            return 
+        # ===================================
+
+        next_state_list = self.search_space[root].childlist[maxindex]
+        
+        # === Expand and Evaluate ===
+        vlist = []
+        rec_states = []
+        sumv = 0
+
+        for next_state in next_state_list:
+            if self.is_end(next_state):
+                v = 1.0
+                vlist.append(v)
+                print(f"        [EVAL] {next_state} → is_end=True → V=1.0")
+            elif depth == self.max_search_depth:
+                if next_state in self.NN_value:
+                    v = self.NN_value[next_state]
                 else:
-                    rec_states.append(next_state)
-            if sumv != -1:
-                for next_state in rec_states:
-                    self._dfs(next_state, depth+1, ancestors^{root}, lock1, lock2, lock3)
-                for next_state in rec_states:
-                    vlist.append(self.search_space[next_state].V)
-                sumv = self._gen_V(vlist)
-            #Backup
-            self.search_space[root].V = sumv
-            self.search_space[root].Nlist[maxindex] += 1
-            self.search_space[root].qlist[maxindex] = self._gen_Q(self.search_space[root].qlist[maxindex], self.search_space[root].Nlist[maxindex], sumv)
+                    v = self.gen_value(next_state)
+                    self.NN_value[next_state] = v
+                if v == -1:
+                    sumv = -1
+                    break
+                vlist.append(v)
+                print(f"        [EVAL] {next_state} → Value Net → V={v:.3f}")
+            else:
+                rec_states.append(next_state)
+
+        if sumv != -1:
+            for next_state in rec_states:
+                self._dfs(next_state, depth+1, ancestors^{root})
+            for next_state in rec_states:
+                vlist.append(self.search_space[next_state].V)
+            sumv = self._gen_V(vlist)
+            print(f"        [BACKUP] Child V list: {[f'{v:.3f}' for v in vlist]} → Parent V = {sumv:.3f}")
+        # ===========================
+
+        # === Backup ===
+        node = self.search_space[root]
+        node.V = sumv
+        node.Nlist[maxindex] += 1
+        old_q = node.qlist[maxindex]
+        node.qlist[maxindex] = self._gen_Q(old_q, node.Nlist[maxindex], sumv)
+        new_q = node.qlist[maxindex]
+
+        print(f"      [BACKUP] Selected Branch {maxindex} → N+1, V={sumv:.3f}, Q: {old_q:.3f} → {new_q:.3f}")
+        # ==============
+
         return

@@ -40,4 +40,4 @@ class utils():
         for i in mol.GetAtoms():
             if i.GetAtomicNum() == 6:
                 c += 1
-        return (c<=6)
+        return (c<=3)
