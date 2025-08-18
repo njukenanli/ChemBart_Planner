@@ -16,7 +16,14 @@ The original code is implemented on Linux. To set up the python environment, the
 > 
 > transformers
 > 
-> rdkit
+> rdkit  
+
+We recommend using conda to set up the environment. The environment.yml file is provided in the repository.
+
+```bash
+conda env create -f environment.yml
+conda activate myproject
+```
 
 Datasets should also be downloaded separately to run the planner. Get data from the link [not yet published]. 
 
