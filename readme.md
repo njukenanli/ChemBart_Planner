@@ -1,15 +1,8 @@
 # ChemBart Planner: Retrosynthesis Route Planning Program with a Pre-trained LLM #
 
+Paper: Coming ...
+
 This is the multi-step synthesis route planner based on our pre-trained LLM: ChemBart. In this program, we use our pre-trained and fine-tuned ChemBart models to generate synthesis precursors for target product molecules, and reaction information for each step like reagents, temperature, yield and so on. We use the MCTS and RL algorithms in our previous work ReSynZ([https://pubs.acs.org/doi/10.1021/acs.jctc.4c00071?ref=pdf](https://pubs.acs.org/doi/10.1021/acs.jctc.4c00071?ref=pdf)) for the selection of precursors in each synthesis step.
-
-## Reference ##
-For our pre-trained model "Chemistry Bart" (ChemBart) Paper *ChemBart: A Pre-trained Bart Model Assisting Organic Chemistry Analysis*, see [not yet published].
-
-For ChemBart source code, see CB_Planner/functions/ChemBart/: [https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart).
-
-For demo on how to quickly run single step inference using ChemBart model for synthesis, temperature&yield, policy&value, refer to [single_step_demo.ipynb](CB_Planner/functions/ChemBart/Demo4How2RunChemBart/single_step_demo.ipynb).
-
-For implementation details of this planner, see CB_Planner/: [https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner)
 
 ## Preparation ##
 
@@ -42,6 +35,16 @@ To download necessary model weights and dataset to run ChemBart Retrosynthesis P
 ```bash
 python -m CB_Planner.data.download --timeout 600
 ```
+
+## Reference ##
+
+For ChemBart source code, see: [CB_Planner/functions/ChemBart/](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart).
+
+For demo on how to quickly run single step inference using ChemBart model for synthesis, temperature&yield, policy&value, refer to [CB_Planner/functions/ChemBart/demo/single_step_demo.ipynb](CB_Planner/functions/ChemBart/demo/single_step_demo.ipynb).
+
+For implementation details of this planner, see: [CB_Planner/](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner)
+
+Below we provide manual on multi-step retrosynthesis.
 
 ## Planning ##
 1.Target Molecules

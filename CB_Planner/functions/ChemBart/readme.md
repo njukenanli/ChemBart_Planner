@@ -12,6 +12,6 @@ The original code is implemented on Linux. To set up the python environment, the
 
 ## Demo ##
 
-In the directory "Demo4How2RunChemBart", there are some main.py files to show how to run ChemBart models.
+In the directory "demo", there are some main.py files to show how to run ChemBart models.
 
-[single_step_demo.ipynb](./Demo4How2RunChemBart/single_step_demo.ipynb) gives examples on how to run single step models for synthesis, temperature and policy-value 
+[single_step_demo.ipynb](./demo/single_step_demo.ipynb) gives examples on how to run single step models for synthesis, temperature and policy-value 
