@@ -2,7 +2,8 @@ config = \
 {
             "save_path": './answer' ,
             "bascic_mol": "./CB_Planner/functions/ChemBart/data/basic_mol.json",
-            "chembart_path":'./CB_Planner/functions/ChemBart/model/Pretrained-MIT.pth',
+            "chembart_path":'./CB_Planner/functions/ChemBart/model/Pretrained-Full.pth', 
+            # please use ChemBart pretrained on USPTO-FULL! We find though MIT dataset has better data quality but its smaller data size (1/3 of USPTO-full) makes generalizability very terrible and thus it's not suitable for large-scale out-of-scope prediction.
             "rl_path":'./CB_Planner/functions/ChemBart/model/Policy-Value.pth',
             "ty_path":'./CB_Planner/functions/ChemBart/model/Temperature-Yield.pth', 
             # params for supervision
@@ -44,5 +45,6 @@ config = \
                 "semaphore_per_model": 3, # num of processes that can call a model at the same time, linited by the gpu memory.
             }
 }
+
 
 
