@@ -1,10 +1,10 @@
 config = \
 {
-            "save_path": 'JMC/benchmark_topp_strict/' ,
-            "bascic_mol": "CB_Planner/data/basic_mol.json",
-            "chembart_path":'/home/zhangyijian/ChemBart/v2/ChemBart_model/ChemBart_FULL_4.pth',
-            "rl_path":'/home/zhangyijian/ChemBart/CB_Planner/CB_Planner/functions/ChemBart/model/CB_MCTS.pth',
-            "ty_path":'/home/zhangyijian/ChemBart/CB_Planner/CB_Planner/functions/ChemBart/model/temp_yield_bart.pth', 
+            "save_path": './answer' ,
+            "bascic_mol": "./CB_Planner/functions/ChemBart/data/basic_mol.json",
+            "chembart_path":'./CB_Planner/functions/ChemBart/model/Pretrained-MIT.pth',
+            "rl_path":'./CB_Planner/functions/ChemBart/model/Policy-Value.pth',
+            "ty_path":'./CB_Planner/functions/ChemBart/model/Temperature-Yield.pth', 
             # params for supervision
             "getdata": {
                 "train": False,  # retain search data for RL training or not
@@ -24,11 +24,11 @@ config = \
             },
 
             "nn":{
-                "gen_dev": "cuda:2", # device to load generation model (pre-trained model)
-                "agt_dev": "cuda:2", # device to load agent model (pre-trained model)
-                "pro_dev": "cuda:2", # device to load product (round trip) model (pre-trained model)
-                "rl_dev": "cuda:2", # device to load RL model (fine-tuned model)
-                "temp_yield_dev": "cuda:2", # device to load model for temperature and yield prediction (fine-tuned model)
+                "gen_dev": "cuda:0", # device to load retrosynthesis model (pre-trained model)
+                "agt_dev": "cuda:1", # device to load reagent model (pre-trained model)
+                "pro_dev": "cuda:2", # device to load forward (round trip) model (pre-trained model)
+                "rl_dev": "cuda:3", # device to load RL model (fine-tuned model)
+                "temp_yield_dev": "cuda:0", # device to load model for temperature and yield prediction (fine-tuned model)
                 #"choiceperstep": 50, # num of choices generated in each node in the tree.
                 "sampling_method": 'top_p', #'top_k' / 'top_p' / 'beam'
                 "topk": 10,
@@ -44,4 +44,5 @@ config = \
                 "semaphore_per_model": 3, # num of processes that can call a model at the same time, linited by the gpu memory.
             }
 }
+
 
