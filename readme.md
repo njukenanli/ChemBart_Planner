@@ -7,6 +7,8 @@ For our pre-trained model "Chemistry Bart" (ChemBart) Paper *ChemBart: A Pre-tra
 
 For ChemBart source code, see CB_Planner/functions/ChemBart/: [https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart).
 
+For demo on how to quickly run single step inference using ChemBart model for synthesis, temperature&yield, policy&value, refer to [single_step_demo.ipynb](CB_Planner/functions/ChemBart/Demo4How2RunChemBart/single_step_demo.ipynb).
+
 For implementation details of this planner, see CB_Planner/: [https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner)
 
 ## Preparation ##
@@ -83,5 +85,6 @@ or in CB\_Planner/board.py after
 
 >     ty.AddTemperatureYield(routes)
 >     del ty
+
 
 
