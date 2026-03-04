@@ -11,6 +11,8 @@ For implementation details of this planner, see CB_Planner/: [https://github.com
 
 ## Preparation ##
 
+### Enviroment ###
+
 The original code is implemented on Linux. To set up the python environment, the following library is required.
 > PyTorch (with cuda or not)
 > 
@@ -25,9 +27,19 @@ conda env create -f environment.yml
 conda activate myproject
 ```
 
-Datasets should also be downloaded separately to run the planner. Get data from the link [not yet published]. 
+### Data ###
 
-Put the buyable molecule dataset "basic\_mol.json" in CB\_Planner/data. put the pre-trained model "ChemBart.pth", the fine-tuned model for MCTS(RL) "CB\_MCTS.pth", and the fine-tuned model for temperature-yield prediction "temp\_yield\_bart.pth" in the directory CB\_Planner/data/model (-> CB_Planner/functions/ChemBart/model). Note that the program would only read the checkpoint files named "ChemBart.pth", "CB\_MCTS.pth", and "temp\_yield\_bart.pth", so if you want to substitute these files with other checkpoints, change the name of the checkpoint file you are going to use to the above required names.
+Datasets should also be downloaded separately to run the planner. 
+
+Model weights and basic molecule dataset have been uploaded to https://huggingface.co/ChemBart
+
+We don't provide model weights for molecular property regression but you can reproduce the results following our paper.
+
+To download necessary model weights and dataset to run ChemBart Retrosynthesis Planner:
+
+```bash
+python -m CB_Planner.data.download --timeout 600
+```
 
 ## Planning ##
 1.Target Molecules
@@ -71,4 +83,5 @@ or in CB\_Planner/board.py after
 
 >     ty.AddTemperatureYield(routes)
 >     del ty
+
 
