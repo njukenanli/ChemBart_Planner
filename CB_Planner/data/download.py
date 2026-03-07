@@ -36,7 +36,7 @@ ASSETS = {
         "description": "Temperature-yield model",
     },
     "basic_mol": {
-        "url": "https://huggingface.co/datasets/ChemBart/Basic-Mols/resolve/main/basic_mol.json",
+        "url": "https://huggingface.co/datasets/ChemBart/Basic-Mols/resolve/main/basic_mol_canon.json",
         "dest": Path("CB_Planner/functions/ChemBart/data/basic_mol.json"),
         "description": "Buyable molecule dataset",
     },
