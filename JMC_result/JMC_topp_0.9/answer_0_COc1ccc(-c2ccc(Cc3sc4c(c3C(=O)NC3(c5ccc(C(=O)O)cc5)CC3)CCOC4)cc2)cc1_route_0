@@ -1,0 +1,60 @@
+answer_0_COc1ccc(-c2ccc(Cc3sc4c(c3C(=O)NC3(c5ccc(C(=O)O)cc5)CC3)CCOC4)cc2)cc1_route_0
+{
+ "success": 1,
+ "probability": 0.8567252750493095
+}
+synthesis route:
+{
+ "COc1ccc(-c2ccc(Cc3sc4c(c3C(=O)NC3(c5ccc(C(=O)O)cc5)CC3)CCOC4)cc2)cc1": {
+  "COC(=O)c1ccc(C2(NC(=O)c3c(Cc4ccc(-c5ccc(OC)cc5)cc4)sc4c3CCOC4)CC2)cc1": {
+   "COC(=O)c1ccc(C2(N)CC2)cc1": "basic_molecule",
+   "COc1ccc(-c2ccc(Cc3sc4c(c3C(=O)O)CCOC4)cc2)cc1": {
+    "COc1ccc(B(O)O)cc1": "basic_molecule",
+    "O=C(O)c1c(Cc2ccc(Br)cc2)sc2c1CCOC2": {
+     "CCOC(=O)c1c(Cc2ccc(Br)cc2)sc2c1CCOC2": {
+      "BrCc1ccc(Br)cc1": "basic_molecule",
+      "CCOC(=O)c1csc2c1CCOC2": "basic_molecule"
+     }
+    }
+   }
+  }
+ }
+}
+reaction information per step:
+{
+ "COc1ccc(-c2ccc(Cc3sc4c(c3C(=O)NC3(c5ccc(C(=O)O)cc5)CC3)CCOC4)cc2)cc1": {
+  "reagents": "[Li+].[OH-].C1CCOC1.O",
+  "precursors": "COC(=O)c1ccc(C2(NC(=O)c3c(Cc4ccc(-c5ccc(OC)cc5)cc4)sc4c3CCOC4)CC2)cc1",
+  "probability": 0.9,
+  "temperature": 54.194149017333984,
+  "yield": 76.38980865478516
+ },
+ "COC(=O)c1ccc(C2(NC(=O)c3c(Cc4ccc(-c5ccc(OC)cc5)cc4)sc4c3CCOC4)CC2)cc1": {
+  "reagents": "CCN(C(C)C)C(C)C.CN(C)C(On1nnc2cccnc21)=[N+](C)C.F[P-](F)(F)(F)(F)F.CN(C)C=O",
+  "precursors": "COC(=O)c1ccc(C2(N)CC2)cc1.COc1ccc(-c2ccc(Cc3sc4c(c3C(=O)O)CCOC4)cc2)cc1",
+  "probability": 1.0,
+  "temperature": 72.92951202392578,
+  "yield": 59.65559005737305
+ },
+ "COc1ccc(-c2ccc(Cc3sc4c(c3C(=O)O)CCOC4)cc2)cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].c1ccc([P](c2ccccc2)(c2ccccc2)[Pd]([P](c2ccccc2)(c2ccccc2)c2ccccc2)([P](c2ccccc2)(c2ccccc2)c2ccccc2)[P](c2ccccc2)(c2ccccc2)c2ccccc2)cc1",
+  "precursors": "COc1ccc(B(O)O)cc1.O=C(O)c1c(Cc2ccc(Br)cc2)sc2c1CCOC2",
+  "probability": 1.0,
+  "temperature": 97.8218002319336,
+  "yield": 66.3673095703125
+ },
+ "O=C(O)c1c(Cc2ccc(Br)cc2)sc2c1CCOC2": {
+  "reagents": "[Na+].[OH-].CCO",
+  "precursors": "CCOC(=O)c1c(Cc2ccc(Br)cc2)sc2c1CCOC2",
+  "probability": 0.5128205128205128,
+  "temperature": 77.5805435180664,
+  "yield": 79.73626708984375
+ },
+ "CCOC(=O)c1c(Cc2ccc(Br)cc2)sc2c1CCOC2": {
+  "reagents": "[Cl-].[H-].[NH4+].[Na+].CN(C)C=O",
+  "precursors": "BrCc1ccc(Br)cc1.CCOC(=O)c1csc2c1CCOC2",
+  "probability": 1.0,
+  "temperature": 16.425460815429688,
+  "yield": 68.79495239257812
+ }
+}
