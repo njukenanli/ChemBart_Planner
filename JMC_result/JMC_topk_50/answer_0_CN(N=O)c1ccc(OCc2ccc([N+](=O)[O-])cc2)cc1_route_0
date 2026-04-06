@@ -1,0 +1,42 @@
+answer_0_CN(N=O)c1ccc(OCc2ccc([N+](=O)[O-])cc2)cc1_route_0
+{
+ "success": 1,
+ "probability": 0.9654893846056297
+}
+synthesis route:
+{
+ "CN(N=O)c1ccc(OCc2ccc([N+](=O)[O-])cc2)cc1": {
+  "CN(N)c1ccc(OCc2ccc([N+](=O)[O-])cc2)cc1": {
+   "CN(N)c1ccc(O)cc1": {
+    "CNN": "basic_molecule",
+    "Oc1ccc(Br)cc1": "basic_molecule"
+   },
+   "O=[N+]([O-])c1ccc(CBr)cc1": "basic_molecule"
+  },
+  "O=N[O-]": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "CN(N=O)c1ccc(OCc2ccc([N+](=O)[O-])cc2)cc1": {
+  "reagents": "[Na+].CC(=O)O.O",
+  "precursors": "CN(N)c1ccc(OCc2ccc([N+](=O)[O-])cc2)cc1.O=N[O-]",
+  "probability": 0.9,
+  "temperature": 3.2337746620178223,
+  "yield": 74.47537231445312
+ },
+ "CN(N)c1ccc(OCc2ccc([N+](=O)[O-])cc2)cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CN(C)C=O",
+  "precursors": "CN(N)c1ccc(O)cc1.O=[N+]([O-])c1ccc(CBr)cc1",
+  "probability": 1.0,
+  "temperature": 69.36783599853516,
+  "yield": 63.290592193603516
+ },
+ "CN(N)c1ccc(O)cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CN(C)C=O",
+  "precursors": "CNN.Oc1ccc(Br)cc1",
+  "probability": 1.0,
+  "temperature": 97.75542449951172,
+  "yield": 71.42631530761719
+ }
+}
