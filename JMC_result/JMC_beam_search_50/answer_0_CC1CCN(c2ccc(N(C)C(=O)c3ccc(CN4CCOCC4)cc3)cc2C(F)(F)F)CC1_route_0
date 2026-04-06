@@ -1,0 +1,32 @@
+answer_0_CC1CCN(c2ccc(N(C)C(=O)c3ccc(CN4CCOCC4)cc3)cc2C(F)(F)F)CC1_route_0
+{
+ "success": 1,
+ "probability": 1.0
+}
+synthesis route:
+{
+ "CC1CCN(c2ccc(N(C)C(=O)c3ccc(CN4CCOCC4)cc3)cc2C(F)(F)F)CC1": {
+  "CNc1ccc(N2CCC(C)CC2)c(C(F)(F)F)c1": {
+   "CNc1ccc(Cl)c(C(F)(F)F)c1": "basic_molecule",
+   "CC1CCNCC1": "basic_molecule"
+  },
+  "O=C(O)c1ccc(CN2CCOCC2)cc1": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "CC1CCN(c2ccc(N(C)C(=O)c3ccc(CN4CCOCC4)cc3)cc2C(F)(F)F)CC1": {
+  "reagents": "On1nnc2ccccc21.CCN(C(C)C)C(C)C.CCN=C=NCCCN(C)C.ClCCl",
+  "precursors": "CNc1ccc(N2CCC(C)CC2)c(C(F)(F)F)c1.O=C(O)c1ccc(CN2CCOCC2)cc1",
+  "probability": 1.0,
+  "temperature": 54.60728073120117,
+  "yield": 57.25911331176758
+ },
+ "CNc1ccc(N2CCC(C)CC2)c(C(F)(F)F)c1": {
+  "reagents": "CC(C)(C)[O-].[Na+].Cc1ccccc1.O=C(/C=C/c1ccccc1)/C=C/c1ccccc1.O=C(/C=C/c1ccccc1)/C=C/c1ccccc1.O=C(/C=C/c1ccccc1)/C=C/c1ccccc1.[Pd].[Pd]",
+  "precursors": "CNc1ccc(Cl)c(C(F)(F)F)c1.CC1CCNCC1",
+  "probability": 1.0,
+  "temperature": 97.80789947509766,
+  "yield": 58.50373840332031
+ }
+}
