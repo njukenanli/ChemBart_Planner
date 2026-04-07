@@ -1,0 +1,62 @@
+answer_0_COc1ccc(Br)cc1S(=O)(=O)Nc1cc2c(C)noc2cc1OCC(=O)NCCNC(=O)COc1cccc2c1C(=O)N(C1CCC(=O)NC1=O)C2=O_route_0
+{
+ "success": 1,
+ "probability": 0.8818602062217205
+}
+synthesis route:
+{
+ "COc1ccc(Br)cc1S(=O)(=O)Nc1cc2c(C)noc2cc1OCC(=O)NCCNC(=O)COc1cccc2c1C(=O)N(C1CCC(=O)NC1=O)C2=O": {
+  "COc1ccc(Br)cc1S(=O)(=O)Nc1cc2c(C)noc2cc1OCC(=O)O": {
+   "CC(C)=O": "basic_molecule",
+   "COc1ccc(Br)cc1S(=O)(=O)Cl": "basic_molecule",
+   "Cc1noc2cc(OCC(=O)O)c(N)cc12": {
+    "Cc1noc2cc(OCC(=O)O)c([N+](=O)[O-])cc12": {
+     "CCOC(=O)CBr": "basic_molecule",
+     "Cc1noc2cc(O)c([N+](=O)[O-])cc12": {
+      "Cc1noc2cc(O)ccc12": "basic_molecule",
+      "O=[N+]([O-])O": "basic_molecule"
+     }
+    }
+   }
+  },
+  "NCCNC(=O)COc1cccc2c1C(=O)N(C1CCC(=O)NC1=O)C2=O": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "COc1ccc(Br)cc1S(=O)(=O)Nc1cc2c(C)noc2cc1OCC(=O)NCCNC(=O)COc1cccc2c1C(=O)N(C1CCC(=O)NC1=O)C2=O": {
+  "reagents": "CCN(C(C)C)C(C)C.CN(C)C(On1nnc2cccnc21)=[N+](C)C.F[P-](F)(F)(F)(F)F.ClCCl",
+  "precursors": "COc1ccc(Br)cc1S(=O)(=O)Nc1cc2c(C)noc2cc1OCC(=O)O.NCCNC(=O)COc1cccc2c1C(=O)N(C1CCC(=O)NC1=O)C2=O",
+  "probability": 1.0,
+  "temperature": 53.04924392700195,
+  "yield": 55.625484466552734
+ },
+ "COc1ccc(Br)cc1S(=O)(=O)Nc1cc2c(C)noc2cc1OCC(=O)O": {
+  "reagents": "c1ccncc1",
+  "precursors": "CC(C)=O.COc1ccc(Br)cc1S(=O)(=O)Cl.Cc1noc2cc(OCC(=O)O)c(N)cc12",
+  "probability": 1.0,
+  "temperature": 33.27371597290039,
+  "yield": 62.77836990356445
+ },
+ "Cc1noc2cc(OCC(=O)O)c(N)cc12": {
+  "reagents": "[H][H].CO.[Pd]",
+  "precursors": "Cc1noc2cc(OCC(=O)O)c([N+](=O)[O-])cc12",
+  "probability": 0.5333333333333333,
+  "temperature": 57.68263244628906,
+  "yield": 80.41703033447266
+ },
+ "Cc1noc2cc(OCC(=O)O)c([N+](=O)[O-])cc12": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CN(C)C=O",
+  "precursors": "CCOC(=O)CBr.Cc1noc2cc(O)c([N+](=O)[O-])cc12",
+  "probability": 1.0,
+  "temperature": 82.50542449951172,
+  "yield": 65.96073913574219
+ },
+ "Cc1noc2cc(O)c([N+](=O)[O-])cc12": {
+  "reagents": "O=S(=O)(O)O",
+  "precursors": "Cc1noc2cc(O)ccc12.O=[N+]([O-])O",
+  "probability": 1.0,
+  "temperature": 9.930689811706543,
+  "yield": 69.30175018310547
+ }
+}

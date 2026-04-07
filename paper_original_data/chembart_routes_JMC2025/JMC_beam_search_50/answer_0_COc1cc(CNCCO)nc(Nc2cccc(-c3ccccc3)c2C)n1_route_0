@@ -1,0 +1,33 @@
+answer_0_COc1cc(CNCCO)nc(Nc2cccc(-c3ccccc3)c2C)n1_route_0
+{
+ "success": 1,
+ "probability": 1.0
+}
+synthesis route:
+{
+ "COc1cc(CNCCO)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+  "COc1cc(C=O)nc(Cl)n1": {
+   "COc1cc(C)nc(Cl)n1": "basic_molecule",
+   "O": "basic_molecule"
+  },
+  "Cc1c(N)cccc1-c1ccccc1": "basic_molecule",
+  "NCCO": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "COc1cc(CNCCO)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+  "reagents": "CCN(C(C)C)C(C)C.ClCCl",
+  "precursors": "COc1cc(C=O)nc(Cl)n1.Cc1c(N)cccc1-c1ccccc1.NCCO",
+  "probability": 1.0,
+  "temperature": 74.0317153930664,
+  "yield": 57.930267333984375
+ },
+ "COc1cc(C=O)nc(Cl)n1": {
+  "reagents": "ClCCl.[Mn+4].[O-2].[O-2]",
+  "precursors": "COc1cc(C)nc(Cl)n1.O",
+  "probability": 1.0,
+  "temperature": 47.64590835571289,
+  "yield": 79.73934936523438
+ }
+}

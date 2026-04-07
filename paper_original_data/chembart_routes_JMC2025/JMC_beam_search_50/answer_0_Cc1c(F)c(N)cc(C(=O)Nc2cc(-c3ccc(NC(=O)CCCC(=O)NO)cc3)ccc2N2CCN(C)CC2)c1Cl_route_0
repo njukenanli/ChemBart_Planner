@@ -1,0 +1,62 @@
+answer_0_Cc1c(F)c(N)cc(C(=O)Nc2cc(-c3ccc(NC(=O)CCCC(=O)NO)cc3)ccc2N2CCN(C)CC2)c1Cl_route_0
+{
+ "success": 1,
+ "probability": 0.9641925040026271
+}
+synthesis route:
+{
+ "Cc1c(F)c(N)cc(C(=O)Nc2cc(-c3ccc(NC(=O)CCCC(=O)NO)cc3)ccc2N2CCN(C)CC2)c1Cl": {
+  "Cc1c(F)c(N)cc(C(=O)Nc2cc(-c3ccc(N)cc3)ccc2N2CCN(C)CC2)c1Cl": {
+   "CC1(C)OB(c2ccc(N)cc2)OC1(C)C": "basic_molecule",
+   "Cc1c(F)c(N)cc(C(=O)Nc2cc(I)ccc2N2CCN(C)CC2)c1Cl": {
+    "CN1CCNCC1": "basic_molecule",
+    "Cc1c(F)c(N)cc(C(=O)Nc2cc(I)ccc2F)c1Cl": {
+     "Cc1c(F)c(N)cc(C(=O)O)c1Cl": "basic_molecule",
+     "Nc1cc(I)ccc1F": "basic_molecule"
+    }
+   }
+  },
+  "O=C1CCCC(=O)N1O": {
+   "O=C1CCCC(=O)N1": "basic_molecule",
+   "O=[O+][O-]": "basic_molecule"
+  }
+ }
+}
+reaction information per step:
+{
+ "Cc1c(F)c(N)cc(C(=O)Nc2cc(-c3ccc(NC(=O)CCCC(=O)NO)cc3)ccc2N2CCN(C)CC2)c1Cl": {
+  "reagents": "C1CCOC1",
+  "precursors": "Cc1c(F)c(N)cc(C(=O)Nc2cc(-c3ccc(N)cc3)ccc2N2CCN(C)CC2)c1Cl.O=C1CCCC(=O)N1O",
+  "probability": 1.0,
+  "temperature": 63.74079513549805,
+  "yield": 58.691959381103516
+ },
+ "Cc1c(F)c(N)cc(C(=O)Nc2cc(-c3ccc(N)cc3)ccc2N2CCN(C)CC2)c1Cl": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].c1ccc([P](c2ccccc2)(c2ccccc2)[Pd]([P](c2ccccc2)(c2ccccc2)c2ccccc2)([P](c2ccccc2)(c2ccccc2)c2ccccc2)[P](c2ccccc2)(c2ccccc2)c2ccccc2)cc1",
+  "precursors": "CC1(C)OB(c2ccc(N)cc2)OC1(C)C.Cc1c(F)c(N)cc(C(=O)Nc2cc(I)ccc2N2CCN(C)CC2)c1Cl",
+  "probability": 1.0,
+  "temperature": 97.90359497070312,
+  "yield": 57.74280548095703
+ },
+ "O=C1CCCC(=O)N1O": {
+  "reagents": "CC(=O)O",
+  "precursors": "O=C1CCCC(=O)N1.O=[O+][O-]",
+  "probability": 1.0,
+  "temperature": 67.77481079101562,
+  "yield": 73.23410034179688
+ },
+ "Cc1c(F)c(N)cc(C(=O)Nc2cc(I)ccc2N2CCN(C)CC2)c1Cl": {
+  "reagents": "CCN(CC)CC.CC#N",
+  "precursors": "CN1CCNCC1.Cc1c(F)c(N)cc(C(=O)Nc2cc(I)ccc2F)c1Cl",
+  "probability": 0.8333333333333334,
+  "temperature": 80.7985610961914,
+  "yield": 64.10026550292969
+ },
+ "Cc1c(F)c(N)cc(C(=O)Nc2cc(I)ccc2F)c1Cl": {
+  "reagents": "CCN(C(C)C)C(C)C.CN(C)C(On1nnc2cccnc21)=[N+](C)C.F[P-](F)(F)(F)(F)F.CN(C)C=O",
+  "precursors": "Cc1c(F)c(N)cc(C(=O)O)c1Cl.Nc1cc(I)ccc1F",
+  "probability": 1.0,
+  "temperature": 93.11930847167969,
+  "yield": 53.681190490722656
+ }
+}

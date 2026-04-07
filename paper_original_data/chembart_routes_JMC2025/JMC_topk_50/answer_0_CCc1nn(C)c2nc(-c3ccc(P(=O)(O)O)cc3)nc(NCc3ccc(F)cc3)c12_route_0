@@ -1,0 +1,70 @@
+answer_0_CCc1nn(C)c2nc(-c3ccc(P(=O)(O)O)cc3)nc(NCc3ccc(F)cc3)c12_route_0
+{
+ "success": 1,
+ "probability": 0.9825931938526898
+}
+synthesis route:
+{
+ "CCc1nn(C)c2nc(-c3ccc(P(=O)(O)O)cc3)nc(NCc3ccc(F)cc3)c12": {
+  "CCOP(=O)(OCC)c1ccc(-c2nc(NCc3ccc(F)cc3)c3c(CC)nn(C)c3n2)cc1": {
+   "CCOP(=O)(OCC)c1ccc(-c2nc(Cl)c3c(CC)nn(C)c3n2)cc1": {
+    "CCOP(=O)(OCC)c1ccc(-c2nc(O)c3c(CC)nn(C)c3n2)cc1": {
+     "CCOP([O-])OCC": {
+      "CCOP(OCC)OCC": "basic_molecule"
+     },
+     "CCc1nn(C)c2nc(-c3ccc(Br)cc3)nc(O)c12": {
+      "CCc1nn(C)c(N)c1C(N)=O": "basic_molecule",
+      "O=C(O)c1ccc(Br)cc1": "basic_molecule"
+     }
+    },
+    "O=P(Cl)(Cl)Cl": "basic_molecule"
+   },
+   "NCc1ccc(F)cc1": "basic_molecule"
+  }
+ }
+}
+reaction information per step:
+{
+ "CCc1nn(C)c2nc(-c3ccc(P(=O)(O)O)cc3)nc(NCc3ccc(F)cc3)c12": {
+  "reagents": "[Na+].[OH-].CCO",
+  "precursors": "CCOP(=O)(OCC)c1ccc(-c2nc(NCc3ccc(F)cc3)c3c(CC)nn(C)c3n2)cc1",
+  "probability": 0.9,
+  "temperature": 65.39752960205078,
+  "yield": 77.27725219726562
+ },
+ "CCOP(=O)(OCC)c1ccc(-c2nc(NCc3ccc(F)cc3)c3c(CC)nn(C)c3n2)cc1": {
+  "reagents": "CCN(C(C)C)C(C)C.CC#N",
+  "precursors": "CCOP(=O)(OCC)c1ccc(-c2nc(Cl)c3c(CC)nn(C)c3n2)cc1.NCc1ccc(F)cc1",
+  "probability": 1.0,
+  "temperature": 90.24864959716797,
+  "yield": 63.24150848388672
+ },
+ "CCOP(=O)(OCC)c1ccc(-c2nc(Cl)c3c(CC)nn(C)c3n2)cc1": {
+  "reagents": "CN(C)c1ccccc1",
+  "precursors": "CCOP(=O)(OCC)c1ccc(-c2nc(O)c3c(CC)nn(C)c3n2)cc1.O=P(Cl)(Cl)Cl",
+  "probability": 1.0,
+  "temperature": 97.92003631591797,
+  "yield": 71.33135986328125
+ },
+ "CCOP(=O)(OCC)c1ccc(-c2nc(O)c3c(CC)nn(C)c3n2)cc1": {
+  "reagents": "O=C([O-])[O-].c1ccc(P(c2ccccc2)c2ccccc2)cc1.[Cs+].[Cs+].CC(=O)[O-].CC(=O)[O-].CN(C)C=O.[Pd+2]",
+  "precursors": "CCOP([O-])OCC.CCc1nn(C)c2nc(-c3ccc(Br)cc3)nc(O)c12",
+  "probability": 1.0,
+  "temperature": 97.95565032958984,
+  "yield": 65.5380630493164
+ },
+ "CCOP([O-])OCC": {
+  "reagents": "CC(=O)O",
+  "precursors": "CCOP(OCC)OCC",
+  "probability": 1.0,
+  "temperature": 97.55961608886719,
+  "yield": 77.30770111083984
+ },
+ "CCc1nn(C)c2nc(-c3ccc(Br)cc3)nc(O)c12": {
+  "reagents": "O=C(n1ccnc1)n1ccnc1.C1CCOC1",
+  "precursors": "CCc1nn(C)c(N)c1C(N)=O.O=C(O)c1ccc(Br)cc1",
+  "probability": 1.0,
+  "temperature": 97.58983612060547,
+  "yield": 53.840843200683594
+ }
+}

@@ -1,0 +1,11 @@
+answer_0_Cc1ncsc1-c1ccc(CNC(=O)C2CC(O)CN2C(=O)C(NC(=O)CCOCCNC(=O)COc2cnc3c(C4CCN(C(=O)c5ccc(OC(F)(F)F)cc5)CC4)ncnc3c2)C(C)(C)C)cc1_route_0
+{
+ "success": -1,
+ "probability": 0.0
+}
+synthesis route:
+{
+ "Cc1ncsc1-c1ccc(CNC(=O)C2CC(O)CN2C(=O)C(NC(=O)CCOCCNC(=O)COc2cnc3c(C4CCN(C(=O)c5ccc(OC(F)(F)F)cc5)CC4)ncnc3c2)C(C)(C)C)cc1": "failed"
+}
+reaction information per step:
+{}

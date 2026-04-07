@@ -1,0 +1,63 @@
+answer_0_COc1ccc(Cn2nc(C(=O)Nc3ccccc3C(=O)O)c3c2CCN(Cc2ccccc2)C3)cc1_route_0
+{
+ "success": 1,
+ "probability": 0.9377079571037806
+}
+synthesis route:
+{
+ "COc1ccc(Cn2nc(C(=O)Nc3ccccc3C(=O)O)c3c2CCN(Cc2ccccc2)C3)cc1": {
+  "BrCc1ccccc1": "basic_molecule",
+  "COc1ccc(Cn2nc(C(=O)Nc3ccccc3C(=O)O)c3c2CCNC3)cc1": {
+   "COc1ccc(Cn2nc(C(=O)O)c3c2CCNC3)cc1": {
+    "COc1ccc(Cn2nc(C#N)c3c2CCNC3)cc1": {
+     "CN(C)C=O": "basic_molecule",
+     "COc1ccc(Cn2nc(I)c3c2CCNC3)cc1": {
+      "COc1ccc(CCl)cc1": "basic_molecule",
+      "Ic1n[nH]c2c1CCNC2": "basic_molecule"
+     }
+    },
+    "O": "basic_molecule",
+    "[OH-]": "basic_molecule"
+   },
+   "Nc1ccccc1C(=O)O": "basic_molecule"
+  }
+ }
+}
+reaction information per step:
+{
+ "COc1ccc(Cn2nc(C(=O)Nc3ccccc3C(=O)O)c3c2CCN(Cc2ccccc2)C3)cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CN(C)C=O",
+  "precursors": "BrCc1ccccc1.COc1ccc(Cn2nc(C(=O)Nc3ccccc3C(=O)O)c3c2CCNC3)cc1",
+  "probability": 1.0,
+  "temperature": 70.11981201171875,
+  "yield": 64.46075439453125
+ },
+ "COc1ccc(Cn2nc(C(=O)Nc3ccccc3C(=O)O)c3c2CCNC3)cc1": {
+  "reagents": "CCN(C(C)C)C(C)C.CN(C)C(On1nnc2cccnc21)=[N+](C)C.F[P-](F)(F)(F)(F)F.CN(C)C=O",
+  "precursors": "COc1ccc(Cn2nc(C(=O)O)c3c2CCNC3)cc1.Nc1ccccc1C(=O)O",
+  "probability": 1.0,
+  "temperature": 48.35818099975586,
+  "yield": 54.98087692260742
+ },
+ "COc1ccc(Cn2nc(C(=O)O)c3c2CCNC3)cc1": {
+  "reagents": "[K+].CO",
+  "precursors": "COc1ccc(Cn2nc(C#N)c3c2CCNC3)cc1.O.[OH-]",
+  "probability": 1.0,
+  "temperature": 73.77291107177734,
+  "yield": 76.7533187866211
+ },
+ "COc1ccc(Cn2nc(C#N)c3c2CCNC3)cc1": {
+  "reagents": "c1ccc([P](c2ccccc2)(c2ccccc2)[Pd]([P](c2ccccc2)(c2ccccc2)c2ccccc2)([P](c2ccccc2)(c2ccccc2)c2ccccc2)[P](c2ccccc2)(c2ccccc2)c2ccccc2)cc1.O",
+  "precursors": "CN(C)C=O.COc1ccc(Cn2nc(I)c3c2CCNC3)cc1",
+  "probability": 0.725,
+  "temperature": 97.72478485107422,
+  "yield": 64.2311019897461
+ },
+ "COc1ccc(Cn2nc(I)c3c2CCNC3)cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CC#N",
+  "precursors": "COc1ccc(CCl)cc1.Ic1n[nH]c2c1CCNC2",
+  "probability": 1.0,
+  "temperature": 60.22976303100586,
+  "yield": 63.05442428588867
+ }
+}

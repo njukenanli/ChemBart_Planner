@@ -1,0 +1,32 @@
+answer_0_CN(N=O)c1ccc(OCc2ccccc2[N+](=O)[O-])cc1_route_0
+{
+ "success": 1,
+ "probability": 1.0
+}
+synthesis route:
+{
+ "CN(N=O)c1ccc(OCc2ccccc2[N+](=O)[O-])cc1": {
+  "CN(N=O)c1ccc(O)cc1": {
+   "CNc1ccc(O)cc1": "basic_molecule",
+   "O=N[O-]": "basic_molecule"
+  },
+  "O=[N+]([O-])c1ccccc1CBr": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "CN(N=O)c1ccc(OCc2ccccc2[N+](=O)[O-])cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CC(C)=O",
+  "precursors": "CN(N=O)c1ccc(O)cc1.O=[N+]([O-])c1ccccc1CBr",
+  "probability": 1.0,
+  "temperature": 68.16765594482422,
+  "yield": 66.47614288330078
+ },
+ "CN(N=O)c1ccc(O)cc1": {
+  "reagents": "[Na+].CC(=O)O.O",
+  "precursors": "CNc1ccc(O)cc1.O=N[O-]",
+  "probability": 1.0,
+  "temperature": 5.171705722808838,
+  "yield": 69.24885559082031
+ }
+}

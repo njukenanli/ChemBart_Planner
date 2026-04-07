@@ -1,0 +1,33 @@
+answer_0_O=C(c1ccc(S(=O)(=O)Nc2ccccc2)cc1)N(Cc1ccc(NCCO)cc1)CC1CC1_route_0
+{
+ "success": 1,
+ "probability": 1.0
+}
+synthesis route:
+{
+ "O=C(c1ccc(S(=O)(=O)Nc2ccccc2)cc1)N(Cc1ccc(NCCO)cc1)CC1CC1": {
+  "O=C(O)c1ccc(S(=O)(=O)Nc2ccccc2)cc1": "basic_molecule",
+  "OCCNc1ccc(CNCC2CC2)cc1": {
+   "NCC1CC1": "basic_molecule",
+   "O=Cc1ccc(F)cc1": "basic_molecule",
+   "NCCO": "basic_molecule"
+  }
+ }
+}
+reaction information per step:
+{
+ "O=C(c1ccc(S(=O)(=O)Nc2ccccc2)cc1)N(Cc1ccc(NCCO)cc1)CC1CC1": {
+  "reagents": "On1nnc2ccccc21.CCN=C=NCCCN(C)C.CN1CCOCC1.ClCCl",
+  "precursors": "O=C(O)c1ccc(S(=O)(=O)Nc2ccccc2)cc1.OCCNc1ccc(CNCC2CC2)cc1",
+  "probability": 1.0,
+  "temperature": 59.9854736328125,
+  "yield": 57.659019470214844
+ },
+ "OCCNc1ccc(CNCC2CC2)cc1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CCO",
+  "precursors": "NCC1CC1.O=Cc1ccc(F)cc1.NCCO",
+  "probability": 1.0,
+  "temperature": 78.16024017333984,
+  "yield": 71.06571197509766
+ }
+}
