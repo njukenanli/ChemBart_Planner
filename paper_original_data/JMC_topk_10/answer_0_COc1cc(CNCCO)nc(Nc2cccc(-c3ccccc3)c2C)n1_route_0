@@ -1,0 +1,52 @@
+answer_0_COc1cc(CNCCO)nc(Nc2cccc(-c3ccccc3)c2C)n1_route_0
+{
+ "success": 1,
+ "probability": 0.9740037464252967
+}
+synthesis route:
+{
+ "COc1cc(CNCCO)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+  "COc1cc(CCl)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+   "COc1cc(CO)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+    "COc1cc(CO)nc(Cl)n1": {
+     "C[O-]": "basic_molecule",
+     "OCc1cc(Cl)nc(Cl)n1": "basic_molecule"
+    },
+    "Cc1c(N)cccc1-c1ccccc1": "basic_molecule"
+   },
+   "O=S(Cl)Cl": "basic_molecule"
+  },
+  "NCCO": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "COc1cc(CNCCO)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CC#N",
+  "precursors": "COc1cc(CCl)nc(Nc2cccc(-c3ccccc3)c2C)n1.NCCO",
+  "probability": 0.9,
+  "temperature": 77.76212310791016,
+  "yield": 64.50090026855469
+ },
+ "COc1cc(CCl)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+  "reagents": "ClC(Cl)Cl",
+  "precursors": "COc1cc(CO)nc(Nc2cccc(-c3ccccc3)c2C)n1.O=S(Cl)Cl",
+  "probability": 1.0,
+  "temperature": 12.716248512268066,
+  "yield": 79.39373779296875
+ },
+ "COc1cc(CO)nc(Nc2cccc(-c3ccccc3)c2C)n1": {
+  "reagents": "O=C([O-])[O-].[K+].[K+].CC#N",
+  "precursors": "COc1cc(CO)nc(Cl)n1.Cc1c(N)cccc1-c1ccccc1",
+  "probability": 1.0,
+  "temperature": 94.6070785522461,
+  "yield": 60.57431411743164
+ },
+ "COc1cc(CO)nc(Cl)n1": {
+  "reagents": "[Na+].CO",
+  "precursors": "C[O-].OCc1cc(Cl)nc(Cl)n1",
+  "probability": 1.0,
+  "temperature": 57.47939682006836,
+  "yield": 79.81224060058594
+ }
+}
