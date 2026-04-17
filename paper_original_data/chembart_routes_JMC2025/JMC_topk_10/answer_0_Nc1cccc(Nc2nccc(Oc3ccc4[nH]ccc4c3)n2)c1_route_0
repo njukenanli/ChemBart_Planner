@@ -1,0 +1,22 @@
+answer_0_Nc1cccc(Nc2nccc(Oc3ccc4[nH]ccc4c3)n2)c1_route_0
+{
+ "success": 1,
+ "probability": 1.0
+}
+synthesis route:
+{
+ "Nc1cccc(Nc2nccc(Oc3ccc4[nH]ccc4c3)n2)c1": {
+  "Clc1nccc(Oc2ccc3[nH]ccc3c2)n1": "basic_molecule",
+  "Nc1cccc(N)c1": "basic_molecule"
+ }
+}
+reaction information per step:
+{
+ "Nc1cccc(Nc2nccc(Oc3ccc4[nH]ccc4c3)n2)c1": {
+  "reagents": "CCN(C(C)C)C(C)C.CC(C)O",
+  "precursors": "Clc1nccc(Oc2ccc3[nH]ccc3c2)n1.Nc1cccc(N)c1",
+  "probability": 1.0,
+  "temperature": 97.93031311035156,
+  "yield": 55.75615310668945
+ }
+}
