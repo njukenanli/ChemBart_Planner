@@ -8,12 +8,13 @@ This is the multi-step synthesis route planner based on our pre-trained LLM: Che
 
 ### Enviroment ###
 
-The original code is implemented on Linux. To set up the python environment, the following library is required.
-> PyTorch (with cuda or not)
-> 
-> transformers
-> 
-> rdkit  
+System: Linux.
+
+Stable version: main branch
+
+```bash
+git clone https://github.com/njukenanli/ChemBART_Planner
+```
 
 We recommend using conda to set up the environment. The environment.yml file is provided in the repository.
 
@@ -21,6 +22,8 @@ We recommend using conda to set up the environment. The environment.yml file is 
 conda env create -f environment.yml
 conda activate myproject
 ```
+
+Typical installation time on a Linux machine: 10 min.
 
 ### Data ###
 
@@ -40,7 +43,7 @@ python -m CB_Planner.data.download --timeout 600
 
 For ChemBart source code, see: [CB_Planner/functions/ChemBart/](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner/functions/ChemBart).
 
-For demo on how to quickly run single step inference using ChemBart model for synthesis, temperature&yield, policy&value, refer to [CB_Planner/functions/ChemBart/demo/single_step_demo.ipynb](CB_Planner/functions/ChemBart/demo/single_step_demo.ipynb).
+For demo on how to quickly run single step inference using ChemBart model for synthesis, temperature&yield, policy&value, refer to [CB_Planner/functions/ChemBart/demo/single_step_demo.ipynb](CB_Planner/functions/ChemBart/demo/single_step_demo.ipynb). Prediction of one sample typically takes around 1 min.
 
 For implementation details of this planner, see: [CB_Planner/](https://github.com/njukenanli/ChemBart_Planner/tree/main/CB_Planner)
 
