@@ -1,6 +1,6 @@
 # ChemBart Planner: Retrosynthesis Route Planning Program with a Pre-trained LLM #
 
-Paper: Coming ...
+Paper: Pre-print available at [ChemBart: Pre-training a Reaction Language Model for Comprehensive Synthesis Planning](https://arxiv.org/abs/2601.02915)
 
 This is the multi-step synthesis route planner based on our pre-trained LLM: ChemBart. In this program, we use our pre-trained and fine-tuned ChemBart models to generate synthesis precursors for target product molecules, and reaction information for each step like reagents, temperature, yield and so on. We use the MCTS and RL algorithms in our previous work ReSynZ([https://pubs.acs.org/doi/10.1021/acs.jctc.4c00071?ref=pdf](https://pubs.acs.org/doi/10.1021/acs.jctc.4c00071?ref=pdf)) for the selection of precursors in each synthesis step.
 
@@ -93,4 +93,6 @@ or in CB\_Planner/board.py after
 >     del ty
 
 
+## Reproducibility ##
+Experimental data reported in the paper, especially the synthesis route planning results, can be found in [./paper_original_data](./paper_original_data). The data is organized in jupyter notebook format so that you can easily execute each cell to reproduce our results. Planning a synthesis route typically takes 1 hour.
 
