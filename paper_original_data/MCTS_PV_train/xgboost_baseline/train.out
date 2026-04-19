@@ -1,0 +1,41 @@
+Loading and processing data...
+Total valid samples loaded: 11950
+
+Data Split Summary (Target 10:1:1):
+  Total: 11950
+  Train:        9958 (83.33%)
+  Validation:    996 (8.33%)
+  Test:          996 (8.33%)
+Using device: cuda
+
+Start Training (Monitoring Validation Set for Early Stopping)...
+[0]	validation_0-rmse:0.97670	validation_1-rmse:0.98095
+[50]	validation_0-rmse:0.47510	validation_1-rmse:0.59471
+[100]	validation_0-rmse:0.37410	validation_1-rmse:0.52437
+[150]	validation_0-rmse:0.31916	validation_1-rmse:0.49305
+[200]	validation_0-rmse:0.27640	validation_1-rmse:0.47031
+[250]	validation_0-rmse:0.24378	validation_1-rmse:0.45580
+[300]	validation_0-rmse:0.21882	validation_1-rmse:0.44361
+[350]	validation_0-rmse:0.19716	validation_1-rmse:0.43570
+[400]	validation_0-rmse:0.17938	validation_1-rmse:0.42802
+[450]	validation_0-rmse:0.16488	validation_1-rmse:0.42283
+[499]	validation_0-rmse:0.15270	validation_1-rmse:0.41899
+Training completed in 25.08 seconds.
+
+==================================================
+           FINAL EVALUATION RESULTS          
+==================================================
+Dataset      | Samples  | RMSE       | MAE        | R²        
+----------------------------------------------------------
+Train        | 9958     | 0.1529     | 0.0965     | 0.9766    
+Validation   | 996      | 0.4188     | 0.2635     | 0.8245    
+Test         | 996      | 0.3825     | 0.2541     | 0.8531    
+----------------------------------------------------------
+
+Overfitting Check (Val vs Train):
+  RMSE Gap: 0.2659 (173.91%)
+Warning: Significant Overfitting detected.
+
+  Best Iteration (stopped at): 498
+
+Model saved to 'xgb_value_model_1011.pkl'

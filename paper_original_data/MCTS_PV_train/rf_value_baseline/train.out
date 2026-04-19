@@ -1,0 +1,58 @@
+
+[Parallel(n_jobs=-1)]: Using backend ThreadingBackend with 16 concurrent workers.
+[Parallel(n_jobs=-1)]: Done  18 tasks      | elapsed:   20.5s
+[Parallel(n_jobs=-1)]: Done 168 tasks      | elapsed:  2.2min
+[Parallel(n_jobs=-1)]: Done 200 out of 200 | elapsed:  2.7min finished
+[Parallel(n_jobs=16)]: Using backend ThreadingBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  18 tasks      | elapsed:    0.2s
+[Parallel(n_jobs=16)]: Done 168 tasks      | elapsed:    0.9s
+[Parallel(n_jobs=16)]: Done 200 out of 200 | elapsed:    1.0s finished
+[Parallel(n_jobs=16)]: Using backend ThreadingBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  18 tasks      | elapsed:    0.0s
+[Parallel(n_jobs=16)]: Done 168 tasks      | elapsed:    0.1s
+[Parallel(n_jobs=16)]: Done 200 out of 200 | elapsed:    0.1s finished
+[Parallel(n_jobs=16)]: Using backend ThreadingBackend with 16 concurrent workers.
+[Parallel(n_jobs=16)]: Done  18 tasks      | elapsed:    0.0s
+[Parallel(n_jobs=16)]: Done 168 tasks      | elapsed:    0.1s
+[Parallel(n_jobs=16)]: Done 200 out of 200 | elapsed:    0.1s finished
+Loading data for Random Forest Value Network...
+Processed 11950 valid samples for Value prediction.
+
+Data Split Summary (Target 10:1:1):
+  Total: 11950
+  Train:        9958 (83.33%)
+  Validation:    996 (8.33%)
+  Test:          996 (8.33%)
+
+Training Random Forest Regressor (Value Net)...
+Parameters: n_estimators=200, max_depth=None, min_samples_leaf=2
+Training completed in 161.36 seconds.
+
+==================================================
+           FINAL EVALUATION RESULTS          
+==================================================
+Dataset      | Samples  | RMSE       | MAE        | R²        
+----------------------------------------------------------
+Train        | 9958     | 0.2299     | 0.1531     | 0.9472    
+Validation   | 996      | 0.4552     | 0.3076     | 0.7927    
+Test         | 996      | 0.4356     | 0.3041     | 0.8095    
+----------------------------------------------------------
+
+Overfitting Check (Val vs Train):
+  RMSE Gap: 0.2253 (98.01%)
+  ⚠️  Warning: Significant Overfitting detected.
+     Suggestion: Increase min_samples_leaf or reduce max_depth.
+
+Model saved to 'rf_value_model_1011.pkl'
+
+Top 10 Important ECFP Bits:
+  Bit 1060: Importance = 0.0285
+  Bit 378: Importance = 0.0265
+  Bit 1855: Importance = 0.0183
+  Bit 1143: Importance = 0.0154
+  Bit 1171: Importance = 0.0142
+  Bit 1019: Importance = 0.0128
+  Bit 80: Importance = 0.0123
+  Bit 694: Importance = 0.0120
+  Bit 1: Importance = 0.0082
+  Bit 955: Importance = 0.0081

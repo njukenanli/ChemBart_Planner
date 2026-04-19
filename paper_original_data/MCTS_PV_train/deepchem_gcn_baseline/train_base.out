@@ -1,0 +1,54 @@
+nohup: ignoring input
+No normalization for SPS. Feature removed!
+No normalization for AvgIpc. Feature removed!
+Skipped loading some Tensorflow models, missing a dependency. No module named 'tensorflow'
+Skipped loading modules with pytorch-lightning dependency, missing a dependency. No module named 'lightning'
+Skipped loading some Jax models, missing a dependency. No module named 'jax'
+Skipped loading some PyTorch models, missing a dependency. No module named 'tensorflow'
+Loading and featurizing data with DeepChem...
+  Processed 5000 samples...
+  Processed 10000 samples...
+Total valid graphs: 11950
+
+Data Split Summary:
+  Train:        9960 (83.35%)
+  Validation:    995 (8.33%)
+  Test:          995 (8.33%)
+
+Initializing GCNModel...
+Start Training for 200 epochs...
+Epoch 10/200, Loss: 0.5655
+Epoch 20/200, Loss: 0.4659
+Epoch 30/200, Loss: 0.3959
+Epoch 40/200, Loss: 0.3614
+Epoch 50/200, Loss: 0.3246
+Epoch 60/200, Loss: 0.3098
+Epoch 70/200, Loss: 0.2726
+Epoch 80/200, Loss: 0.2511
+Epoch 90/200, Loss: 0.2423
+Epoch 100/200, Loss: 0.2387
+Epoch 110/200, Loss: 0.2260
+Epoch 120/200, Loss: 0.2236
+Epoch 130/200, Loss: 0.2154
+Epoch 140/200, Loss: 0.1990
+Epoch 150/200, Loss: 0.2035
+Epoch 160/200, Loss: 0.2150
+Epoch 170/200, Loss: 0.2013
+Epoch 180/200, Loss: 0.1925
+Epoch 190/200, Loss: 0.1772
+Epoch 200/200, Loss: 0.2007
+Training completed in 2287.36 seconds.
+
+==================================================
+           FINAL EVALUATION RESULTS          
+==================================================
+Dataset      | Samples  | RMSE       | MAE        | R²        
+----------------------------------------------------------
+Train        | 9960     | 0.2975     | 0.1608     | 0.9115    
+Validation   | 995      | 0.4395     | 0.2332     | 0.8068    
+Test         | 995      | 0.4013     | 0.2098     | 0.8387    
+----------------------------------------------------------
+
+Overfitting Check (Val vs Train):
+  RMSE Gap: 0.1420 (47.73%)
+Warning: Possible Overfitting. Try increasing dropout or reducing layers.
