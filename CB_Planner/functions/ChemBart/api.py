@@ -1,5 +1,5 @@
 import sys
-from .ChemBart_2 import ChemBart, CB_mul_END, CB_MCTS
+from .ChemBart import ChemBart, CB_mul_END, CB_MCTS
 import torch
 
 class CBTempYield():

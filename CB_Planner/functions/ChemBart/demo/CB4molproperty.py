@@ -3,15 +3,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from transformers import BartConfig, BartForConditionalGeneration
-from CBTokenizer import CBTokenizer
 import os
-import pickle
-import matplotlib.pyplot as plt
-from rdkit import Chem
-import argparse
-import sys
-import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve, f1_score, precision_score, recall_score, classification_report
+from pathlib import Path
+
+from .CBTokenizer import CBTokenizer
+
+
+CHEMBART_DIR = Path(__file__).resolve().parent
 
 
 # ================== dataset ==================
@@ -54,7 +52,7 @@ class MolProperty(nn.Module):
         self.ran = ran
 
         # load Bart model
-        self.config=BartConfig.from_pretrained("config.json")
+        self.config=BartConfig.from_pretrained(CHEMBART_DIR / "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
         hidden_size = self.config.d_model
         
@@ -201,14 +199,29 @@ class MolProperty(nn.Module):
                 input_ids = input_ids.to(self.device)
                 attention_mask = attention_mask.to(self.device)
 
-                outputs = self(input_ids, attention_mask).sigmoid().cpu().numpy()
+                logits = self(input_ids, attention_mask)
+                if self.type == 2:
+                    outputs = torch.sigmoid(logits)
+                elif self.type > 2:
+                    outputs = torch.softmax(logits, dim=-1)
+                else:
+                    outputs = logits
+                outputs = outputs.cpu().numpy()
                 labels = labels.cpu().numpy()
 
                 y_true.extend(labels.tolist())
                 y_scores.extend(outputs.tolist())
 
         # Accuracy
-        if self.type == 2:
+        if self.type == 1:
+            rmse = (sum((prediction - label) ** 2
+                        for prediction, label in zip(y_scores, y_true)) / len(y_true)) ** 0.5
+            print(f"Test RMSE: {rmse}")
+            return rmse
+        elif self.type == 2:
+            from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
+            import matplotlib.pyplot as plt
+
             y_pred = [1 if score >= 0.5 else 0 for score in y_scores]
             acc = accuracy_score(y_true, y_pred)
             auc = roc_auc_score(y_true, y_scores)
@@ -226,6 +239,8 @@ class MolProperty(nn.Module):
             print(f"Test Accuracy: {acc}, AUC: {auc}")
             return acc, auc
         else:
+            from sklearn.metrics import accuracy_score
+
             y_pred = [score.index(max(score)) for score in y_scores]
             y_true_idx = [label.index(1) if isinstance(label, list) else int(label) for label in y_true]
             acc = accuracy_score(y_true_idx, y_pred)
@@ -288,7 +303,7 @@ class MolProperty_encoder_only(nn.Module):
         self.ran = ran
 
         # load Bart model
-        self.config=BartConfig.from_pretrained("config.json")
+        self.config=BartConfig.from_pretrained(CHEMBART_DIR / "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
         self.bart_encoder = self.BartNN.get_encoder()
         hidden_size = self.config.d_model
@@ -432,14 +447,28 @@ class MolProperty_encoder_only(nn.Module):
                 input_ids = input_ids.to(self.device)
                 attention_mask = attention_mask.to(self.device)
 
-                outputs = self(input_ids, attention_mask).sigmoid().cpu().numpy()
+                logits = self(input_ids, attention_mask)
+                if self.type == 2:
+                    outputs = torch.sigmoid(logits)
+                elif self.type > 2:
+                    outputs = torch.softmax(logits, dim=-1)
+                else:
+                    outputs = logits
+                outputs = outputs.cpu().numpy()
                 labels = labels.cpu().numpy()
 
                 y_true.extend(labels.tolist())
                 y_scores.extend(outputs.tolist())
 
         # Accuracy
-        if self.type == 2:
+        if self.type == 1:
+            rmse = (sum((prediction - label) ** 2
+                        for prediction, label in zip(y_scores, y_true)) / len(y_true)) ** 0.5
+            print(f"Test RMSE: {rmse}")
+            return rmse
+        elif self.type == 2:
+            from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
+
             y_pred = [1 if score >= 0.5 else 0 for score in y_scores]
             acc = accuracy_score(y_true, y_pred)
             auc = roc_auc_score(y_true, y_scores)
@@ -457,6 +486,8 @@ class MolProperty_encoder_only(nn.Module):
             #print(f"Test Accuracy: {acc}, AUC: {auc}")
             return acc, auc
         else:
+            from sklearn.metrics import accuracy_score
+
             y_pred = [score.index(max(score)) for score in y_scores]
             y_true_idx = [label.index(1) if isinstance(label, list) else int(label) for label in y_true]
             acc = accuracy_score(y_true_idx, y_pred)

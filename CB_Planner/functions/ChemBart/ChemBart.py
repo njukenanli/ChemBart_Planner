@@ -94,13 +94,13 @@ class ChemBart():
             self.BartNN = self.BartNN.to(device)
         optimizer = torch.optim.AdamW(self.BartNN.parameters(), lr=1e-6, weight_decay=1e-5)
         criterion = torch.nn.BCELoss()
-        datapiece=int(len(stringlist)/500)+1
+        datapiece=int(len(stringlist)/1024)+1
         for e in range(epoch):
             total_loss_train = 0
             print('epoch: ' ,e,flush=True)
             for count in range(datapiece):
                 data=[]
-                for s in stringlist[500*count:500*(count+1)]:
+                for s in stringlist[1024*count:1024*(count+1)]:
                     data.extend(self.tokenizer.gen_train_data_fast(s))
                 #print(len(data),type(data[0]))
                 #print(len(data))
@@ -140,6 +140,26 @@ class ChemBart():
                 del train_dataloader
                 del train_sampler
             print('Epoch train Loss: {}'.format(round(total_loss_train/(datapiece+1) ,3)),flush=True)
+
+    def transform(self, smiles_list):
+        """Return the final decoder hidden state for each valid SMILES string."""
+        self.BartNN.to(self.dev)
+        self.BartNN.eval()
+        outputs = []
+        with torch.no_grad():
+            for smile in smiles_list:
+                input_ids = self.tokenizer.encoder(smile)
+                if len(input_ids) == 0:
+                    continue
+                hidden = self.BartNN(
+                    input_ids=input_ids.to(self.dev),
+                    decoder_input_ids=input_ids.to(self.dev),
+                    return_dict=True,
+                    output_hidden_states=True,
+                ).decoder_hidden_states[-1][0][-1]
+                outputs.append(hidden.cpu().numpy())
+        return outputs
+
     '''
     def predict(self, s, decoder_input="<cls>",
                 top_k=10, max_len=60, stop_with_sep = True):
@@ -265,7 +285,153 @@ class ChemBart():
         endans.sort(key=lambda x:x[1],reverse=True)
         return endans
     
-       
+
+
+    def _top_k_sampling(self, s, decodervector, k, maxlen, stop_with_sep, dev, num_samples=5, temperature=1.0):
+        """
+        Generate sequences using top-k sampling with temperature
+        Returns: list of [sequence, probability] sorted by probability
+        """
+        results = []
+        end_token_id = self.tokenizer.vocab["<end>"]
+        sep_token_id = self.tokenizer.vocab[">"]
+
+        for _ in range(num_samples):
+            current_ids = decodervector[:]  # Start with decoder input
+            log_prob = 0.0
+            step_count = 0
+
+            for step in range(maxlen):
+                # Prepare input tensors
+                input_tensor = torch.tensor([s]).to(dev)
+                decoder_tensor = torch.tensor([current_ids]).to(dev)
+
+                # Forward pass
+                with torch.no_grad():
+                    outputs = self.BartNN(
+                        input_ids=input_tensor,
+                        decoder_input_ids=decoder_tensor,
+                        return_dict=True
+                    )
+                    logits = outputs.logits[0, -1, :]  # Last token logits
+
+                # Apply temperature
+                if temperature != 1.0:
+                    logits = logits / temperature
+
+                # Get top-k tokens
+                topk_probs, topk_indices = torch.topk(F.softmax(logits, dim=-1), k)
+
+                # Renormalize top-k probabilities
+                topk_probs = topk_probs / topk_probs.sum()
+
+                # Sample from top-k
+                next_token_idx = torch.multinomial(topk_probs, 1).item()
+                next_token = topk_indices[next_token_idx].item()
+                token_prob = topk_probs[next_token_idx].item()
+
+                # Update log probability
+                log_prob += math.log(token_prob)
+                step_count += 1
+
+                # Add token to sequence
+                current_ids.append(next_token)
+
+                # Check stopping conditions
+                if next_token == end_token_id:
+                    break
+                if stop_with_sep and next_token == sep_token_id:
+                    break
+
+            # Calculate normalized probability (geometric mean)
+            normalized_prob = math.exp(log_prob / step_count) if step_count > 0 else 0.0
+            results.append([current_ids, normalized_prob])
+
+        # Sort results by probability
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results
+
+    def _top_p_sampling(self, s, decodervector, p, maxlen, stop_with_sep, dev, num_samples=5, temperature=1.0):
+        """
+        Generate sequences using top-p (nucleus) sampling with temperature
+        Returns: list of [sequence, probability] sorted by probability
+        """
+        results = []
+        end_token_id = self.tokenizer.vocab["<end>"]
+        sep_token_id = self.tokenizer.vocab[">"]
+
+        for _ in range(num_samples):
+            current_ids = decodervector[:]  # Start with decoder input
+            log_prob = 0.0
+            step_count = 0
+
+            for step in range(maxlen):
+                # Prepare input tensors
+                input_tensor = torch.tensor([s]).to(dev)
+                decoder_tensor = torch.tensor([current_ids]).to(dev)
+
+                # Forward pass
+                with torch.no_grad():
+                    outputs = self.BartNN(
+                        input_ids=input_tensor,
+                        decoder_input_ids=decoder_tensor,
+                        return_dict=True
+                    )
+                    logits = outputs.logits[0, -1, :]  # Last token logits
+
+                # Apply temperature
+                if temperature != 1.0:
+                    logits = logits / temperature
+
+                # Convert to probabilities
+                probs = F.softmax(logits, dim=-1)
+
+                # Sort probabilities in descending order
+                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+
+                # Remove tokens with cumulative probability above p
+                remove_mask = cumulative_probs > p
+                # Always keep at least one token
+                remove_mask[1:] = remove_mask[:-1].clone()
+                remove_mask[0] = False
+
+                # Apply mask to sorted indices
+                remove_indices = sorted_indices[remove_mask]
+                probs[remove_indices] = 0
+
+                # Renormalize probabilities
+                if probs.sum() > 0:
+                    probs /= probs.sum()
+                else:
+                    # Fallback: use the top token
+                    probs = torch.zeros_like(probs)
+                    probs[sorted_indices[0]] = 1.0
+
+                # Sample next token
+                next_token = torch.multinomial(probs, 1).item()
+                token_prob = probs[next_token].item()
+
+                # Update log probability
+                log_prob += math.log(token_prob)
+                step_count += 1
+
+                # Add token to sequence
+                current_ids.append(next_token)
+
+                # Check stopping conditions
+                if next_token == end_token_id:
+                    break
+                if stop_with_sep and next_token == sep_token_id:
+                    break
+
+            # Calculate normalized probability (geometric mean)
+            normalized_prob = math.exp(log_prob / step_count) if step_count > 0 else 0.0
+            results.append([current_ids, normalized_prob])
+
+        # Sort results by probability
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results
 
 class CB_END(nn.Module):
     '''
@@ -273,7 +439,7 @@ class CB_END(nn.Module):
     '''
     def __init__(self, path: str, out_type: int, 
                  name: str, device: str = "cuda:0",
-                 ran: int = 0):
+                 ran: int = 0, epoch_stop: int = 20):
         '''
         out_type:
         1: regression
@@ -291,6 +457,7 @@ class CB_END(nn.Module):
         self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
         self.ran = ran
+        self.epoch_stop = epoch_stop
         if self.type == 1 or self.type == 2:
             self.linear = nn.Linear(1024, 1)
         elif self.type > 2:
@@ -335,6 +502,7 @@ class CB_END(nn.Module):
         else:
             criterion = torch.nn.BCELoss()
         bestval = None
+        no_improvement_count = 0
         for i in range(epoch):
             print("epoch", i, flush = True)
             ep_loss = 0.0
@@ -376,6 +544,13 @@ class CB_END(nn.Module):
                 bestval = corval
                 torch.save(self.state_dict(), self.name)
                 print("model refreshed!", flush = True)
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+            if self.epoch_stop is not None and no_improvement_count >= self.epoch_stop:
+                print("No improvement in the last {} epochs. Training stopped."
+                      .format(self.epoch_stop), flush=True)
+                break
     def test(self, test_data, return_detail = False):
         acc = 0.0
         self.eval()
@@ -389,12 +564,28 @@ class CB_END(nn.Module):
                     continue
                 count+=1
                 out = self(inp.to(self.device))
-                acc += self._get_acc(out.item() if type(i[1]) == type(1.1) else out.tolist(),i[1])
+                acc += self._get_acc(out.item() if type(i[1]) == type(1.1) else out,i[1])
                 if return_detail:
                     ans.append([i[1],out])
             acc = self._post_proc(acc, count)
             print("test_acc:", acc, flush=True)
         return (acc, ans)
+
+    def predict(self, smiles_list):
+        """Predict labels or values for valid SMILES strings."""
+        self.eval()
+        self.to(self.device)
+        outputs = []
+        with torch.no_grad():
+            for smile in smiles_list:
+                input_ids = self.tokenizer.encoder(smile)
+                if len(input_ids) == 0:
+                    continue
+                outputs.append(self(input_ids.to(self.device)).cpu())
+        if not outputs:
+            return torch.empty(0)
+        return torch.stack(outputs)
+
     def _get_acc(self,out,label) -> float:
         if self.type == 2:
             if (out<0.5 and label<0.5) or (out>=0.5 and label>=0.5):
@@ -404,7 +595,9 @@ class CB_END(nn.Module):
         elif self.type == 1:
             return (out - label)**2
         else:
-            return float(torch.argmax(out) == torch.argmax(label))
+            out_tensor = out if isinstance(out, torch.Tensor) else torch.tensor(out)
+            label_tensor = label if isinstance(label, torch.Tensor) else torch.tensor(label)
+            return float(torch.argmax(out_tensor) == torch.argmax(label_tensor))
     def _post_proc(self,acc:float,num:int) -> float:
         acc = acc/num
         if self.type == 1:
@@ -419,6 +612,25 @@ class CB_END(nn.Module):
                 out = self(self.tokenizer.encoder(i[0]).to(self.device))
                 ans.append([i[1],out])
         return ans
+
+    def transform(self, smiles_list):
+        """Return the final decoder hidden state for each valid SMILES string."""
+        self.eval()
+        self.to(self.device)
+        outputs = []
+        with torch.no_grad():
+            for smile in smiles_list:
+                input_ids = self.tokenizer.encoder(smile)
+                if len(input_ids) == 0:
+                    continue
+                hidden = self.BartNN(
+                    input_ids=input_ids.to(self.device),
+                    decoder_input_ids=input_ids.to(self.device),
+                    return_dict=True,
+                    output_hidden_states=True,
+                ).decoder_hidden_states[-1][0][-1]
+                outputs.append(hidden.cpu().numpy())
+        return outputs
 
 class CB_mul_END(nn.Module):
     '''
@@ -582,6 +794,195 @@ class CB_mul_END(nn.Module):
             cor_yiel = (cor_yiel/count_yiel)**0.5
             print("test_temp_acc:", cor_temp, "test_yiel_acc:", cor_yiel, flush=True)
         return ((cor_temp, cor_yiel), (ans_temp, ans_yiel))
+
+
+class CB_mul_END_cls(nn.Module):
+    """Two-head classifier using the final two decoder token representations."""
+
+    def __init__(self, name: str, pre_model: str, device: str = "cuda:0",
+                 class_counts: Tuple[int, int] = (6, 4), epoch_stop: int = 20):
+        super().__init__()
+        if len(class_counts) != 2 or any(count < 2 for count in class_counts):
+            raise ValueError("class_counts must contain two class counts of at least 2")
+
+        self.class_counts = tuple(class_counts)
+        self.epoch_stop = epoch_stop
+        self.name = name if name.endswith(".pth") else name + ".pth"
+        self.save_path = self.name if os.path.dirname(self.name) else os.path.join("checkpoints", self.name)
+        if pre_model.endswith(".pth") or os.path.dirname(pre_model):
+            self.pre_model = pre_model
+        else:
+            self.pre_model = os.path.join("ChemBart_model", pre_model + ".pth")
+
+        self.tokenizer = CBTokenizer()
+        self.config = BartConfig.from_pretrained(absdir + "config.json")
+        self.BartNN = BartForConditionalGeneration(self.config)
+        self.linear1 = nn.Linear(self.config.d_model, self.class_counts[0])
+        self.linear2 = nn.Linear(self.config.d_model, self.class_counts[1])
+        self.device = torch.device(device)
+
+        if os.path.exists(self.save_path):
+            self.load_state_dict(torch.load(self.save_path, map_location="cpu"))
+            print("fine-tuned model", self.save_path)
+        elif os.path.exists(self.pre_model):
+            self.BartNN.load_state_dict(torch.load(self.pre_model, map_location="cpu"))
+            print("pre-trained model", self.pre_model)
+        else:
+            print("new model")
+
+    def _logits(self, x):
+        last_hidden1, last_hidden2 = self.BartNN(
+            input_ids=x,
+            decoder_input_ids=x,
+            return_dict=True,
+            output_hidden_states=True,
+        ).decoder_hidden_states[-1][0][-2:]
+        return (
+            self.linear1(F.relu(last_hidden1)),
+            self.linear2(F.relu(last_hidden2)),
+        )
+
+    def forward(self, x):
+        """Return softmax probabilities for the two mutually exclusive tasks."""
+        logits1, logits2 = self._logits(x)
+        return (
+            torch.softmax(logits1, dim=-1),
+            torch.softmax(logits2, dim=-1),
+        )
+
+    @staticmethod
+    def _target_index(label, device):
+        label_tensor = torch.as_tensor(label, device=device)
+        if label_tensor.ndim == 0:
+            return label_tensor.long()
+        return torch.argmax(label_tensor).long()
+
+    def single_train(self, data: list, epoch: int, tr: int, val: int, te: int):
+        self.to(self.device)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-6, weight_decay=1e-6)
+        criterion = torch.nn.CrossEntropyLoss()
+        bestval = None
+        no_improvement_count = 0
+
+        for epoch_index in range(epoch):
+            print("epoch", epoch_index, flush=True)
+            self.train()
+            train_losses = [0.0, 0.0]
+            train_counts = [0, 0]
+            train_correct = [0, 0]
+
+            for sample in data[0:tr]:
+                labels = sample[1]
+                if labels[0] is None and labels[1] is None:
+                    continue
+                input_ids = self.tokenizer.encoder(sample[0])
+                if len(input_ids) == 0:
+                    continue
+
+                optimizer.zero_grad()
+                logits = self._logits(input_ids.to(self.device))
+                losses = []
+                for head_index, label in enumerate(labels):
+                    if label is None:
+                        continue
+                    target = self._target_index(label, self.device)
+                    head_loss = criterion(logits[head_index], target)
+                    losses.append(head_loss)
+                    train_losses[head_index] += head_loss.item()
+                    train_counts[head_index] += 1
+                    train_correct[head_index] += int(
+                        torch.argmax(logits[head_index]).item() == target.item()
+                    )
+                if not losses:
+                    continue
+                loss = sum(losses)
+                loss.backward()
+                optimizer.step()
+
+            for head_index in range(2):
+                count = train_counts[head_index]
+                mean_loss = train_losses[head_index] / count if count else 0.0
+                accuracy = train_correct[head_index] / count if count else 0.0
+                print("train head {} loss: {}, accuracy: {}, count: {}"
+                      .format(head_index + 1, mean_loss, accuracy, count))
+
+            self.eval()
+            val_loss = 0.0
+            val_count = 0
+            with torch.no_grad():
+                for sample in data[tr:tr+val]:
+                    labels = sample[1]
+                    if labels[0] is None and labels[1] is None:
+                        continue
+                    input_ids = self.tokenizer.encoder(sample[0])
+                    if len(input_ids) == 0:
+                        continue
+                    logits = self._logits(input_ids.to(self.device))
+                    for head_index, label in enumerate(labels):
+                        if label is None:
+                            continue
+                        target = self._target_index(label, self.device)
+                        val_loss += criterion(logits[head_index], target).item()
+                        val_count += 1
+
+            mean_val_loss = val_loss / val_count if val_count else float("inf")
+            print("validation loss: {}, count: {}".format(mean_val_loss, val_count), flush=True)
+            if bestval is None or mean_val_loss < bestval:
+                bestval = mean_val_loss
+                parent = os.path.dirname(self.save_path)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                torch.save(self.state_dict(), self.save_path)
+                print("model refreshed!", flush=True)
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+
+            if self.epoch_stop is not None and no_improvement_count >= self.epoch_stop:
+                print("No improvement in the last {} epochs. Training stopped."
+                      .format(self.epoch_stop), flush=True)
+                break
+
+    def test(self, test_data, label_range=1):
+        self.eval()
+        self.to(self.device)
+        labels_by_head = [[], []]
+        predictions_by_head = [[], []]
+
+        with torch.no_grad():
+            for sample in test_data:
+                labels = sample[1]
+                if labels[0] is None and labels[1] is None:
+                    continue
+                input_ids = self.tokenizer.encoder(sample[0])
+                if len(input_ids) == 0:
+                    continue
+                probabilities = self(input_ids.to(self.device))
+                for head_index, label in enumerate(labels):
+                    if label is None:
+                        continue
+                    target = self._target_index(label, torch.device("cpu")).item()
+                    prediction = torch.argmax(probabilities[head_index]).item()
+                    labels_by_head[head_index].append(target)
+                    predictions_by_head[head_index].append(prediction)
+
+        accuracies = []
+        f1_scores = []
+        for labels, predictions in zip(labels_by_head, predictions_by_head):
+            if not labels:
+                accuracies.append(0.0)
+                f1_scores.append(0.0)
+                continue
+            matches = [abs(label - prediction) <= label_range
+                       for label, prediction in zip(labels, predictions)]
+            true_positives = sum(matches)
+            errors = len(matches) - true_positives
+            accuracies.append(true_positives / len(matches))
+            denominator = 2 * true_positives + 2 * errors
+            f1_scores.append((2 * true_positives / denominator) if denominator else 0.0)
+
+        return {"accuracy": accuracies, "f1_score": f1_scores}
+
 
 class CB_LSTM(nn.Module):
     '''
@@ -893,13 +1294,19 @@ class CB_Regression(nn.Module):
                 return ((torch.stack(x),torch.stack(msk)),torch.tensor(lab))
             else:
                 raise StopIteration
-    def __init__(self, name: str, label_num: int, device: str):
+    def __init__(self, name: str, label_num: int, device: str,
+                 bart_grad: bool = True, epoch_stop: int = 20):
         super().__init__()
         self.label_num = label_num
+        self.bart_grad = bart_grad
+        self.epoch_stop = epoch_stop
         self.name = absdir + "model/"+name+'.pth'
         self.tokenizer = CBTokenizer()
         self.config=BartConfig.from_pretrained(absdir + "config.json")
         self.BartNN=BartForConditionalGeneration(self.config)
+        if not self.bart_grad:
+            for parameter in self.BartNN.parameters():
+                parameter.requires_grad = False
         self.linear_heads = nn.ModuleList([nn.Linear(1024, 1) for i in range(label_num)])
         self.device = torch.device(device)
         if os.path.exists(self.name):
@@ -922,11 +1329,14 @@ class CB_Regression(nn.Module):
                         for i in range(len(hidden_list))])
         return linear_out
 
-    def fit(self, data: list, epoch: int, batch_size:int, tr: int, val: int, te: int, id_maxlen: int = 1024):
+    def fit(self, data: list, epoch: int, batch_size:int, tr: int, val: int, te: int,
+            id_maxlen: int = 1024, *, lr: float = 1e-6, weight_decay: float = 1e-6):
         self.to(self.device)
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-6, weight_decay=1e-6)
+        parameters = self.parameters() if self.bart_grad else self.linear_heads.parameters()
+        optimizer = torch.optim.AdamW(parameters, lr=lr, weight_decay=weight_decay)
         criterion = torch.nn.MSELoss()
         bestloss = None
+        no_improvement_count = 0
         tr_dataset = self.RegData(data[0:tr], self.tokenizer, maxlen = id_maxlen)
         val_dataset = self.RegData(data[tr:tr+val], self.tokenizer, maxlen = id_maxlen)
         for e in range(epoch):
@@ -978,6 +1388,13 @@ class CB_Regression(nn.Module):
                 bestloss = RMSE_sum
                 torch.save(self.state_dict(), self.name)
                 print("model refreshed!", flush = True)
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+            if self.epoch_stop is not None and no_improvement_count >= self.epoch_stop:
+                print("No improvement in the last {} epochs. Training stopped."
+                      .format(self.epoch_stop), flush=True)
+                break
     def RMSE(self, l):
         s = 0.0
         for x,y in l:
