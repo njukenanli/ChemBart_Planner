@@ -32,6 +32,7 @@ class ChemBart():
 
         def __init__(self, stringlist, tokenizer, max_length, report_invalid=True):
             self.reactions = []
+            self.examples = []
             self.mask_token_id = int(tokenizer.vocab["<msk>"])
             separator_id = int(tokenizer.vocab[">"])
             for reaction_index, reaction in enumerate(stringlist):
@@ -88,15 +89,28 @@ class ChemBart():
                 self.reactions.append(
                     (target_ids, first_separator, second_separator)
                 )
+                reaction_position = len(self.reactions) - 1
+                # An empty reagent is represented by adjacent separators in
+                # ``reactant>>product``. Keep precursor and product training,
+                # but do not create a reagent-masking example for that
+                # reaction because there is no reagent content to predict.
+                directions = (
+                    (0, 2)
+                    if second_separator == first_separator + 1
+                    else (0, 1, 2)
+                )
+                self.examples.extend(
+                    (reaction_position, direction) for direction in directions
+                )
 
         def __len__(self):
-            return 3 * len(self.reactions)
+            return len(self.examples)
 
         def __getitem__(self, index):
+            reaction_position, direction = self.examples[index]
             full_target_ids, first_separator, second_separator = self.reactions[
-                index // 3
+                reaction_position
             ]
-            direction = index % 3
             mask = full_target_ids.new_tensor([self.mask_token_id])
 
             if direction == 0:
@@ -189,6 +203,7 @@ class ChemBart():
     @staticmethod
     def _paral_train_worker(
         local_rank,
+        trainer_class,
         world_size,
         master_port,
         model_path,
@@ -201,7 +216,10 @@ class ChemBart():
         os.environ["RANK"] = str(local_rank)
         os.environ["LOCAL_RANK"] = str(local_rank)
         os.environ["WORLD_SIZE"] = str(world_size)
-        trainer = ChemBart(model_path, dev="cpu")
+        # Construct the runtime class rather than hard-coding ChemBart.  This
+        # lets subclasses reuse the same DDP training implementation with a
+        # different encoder-decoder backbone.
+        trainer = trainer_class(model_path, dev="cpu")
         trainer._paral_train_impl(
             stringlist=stringlist,
             device=torch.device("cuda", local_rank),
@@ -214,6 +232,7 @@ class ChemBart():
     @staticmethod
     def _pretrain_eval_worker(
         local_rank,
+        trainer_class,
         world_size,
         master_port,
         checkpoint_path,
@@ -222,6 +241,9 @@ class ChemBart():
         max_new_tokens_precursor,
         epoch_number,
         log_file,
+        evaluate_test,
+        greedy_mini_batch_size,
+        beam_search_batch_size,
     ):
         """Evaluate one data shard per GPU and aggregate precursor accuracy."""
         os.environ["MASTER_ADDR"] = "127.0.0.1"
@@ -229,7 +251,7 @@ class ChemBart():
         os.environ["RANK"] = str(local_rank)
         os.environ["LOCAL_RANK"] = str(local_rank)
         os.environ["WORLD_SIZE"] = str(world_size)
-        evaluator = ChemBart(
+        evaluator = trainer_class(
             checkpoint_path,
             dev="cuda:{}".format(local_rank)
         )
@@ -243,6 +265,9 @@ class ChemBart():
             rank=local_rank,
             world_size=world_size,
             initialize_process_group=True,
+            evaluate_test=evaluate_test,
+            greedy_mini_batch_size=greedy_mini_batch_size,
+            beam_search_batch_size=beam_search_batch_size,
         )
 
     def __init__(self, path: Optional[str], dev: str = "cpu"):
@@ -257,7 +282,7 @@ class ChemBart():
         self.BartNN=BartForConditionalGeneration(self.config)
         if path is not None:
             self.BartNN.load_state_dict(torch.load(path, map_location='cpu'))
-            print("load previous model: "+path)
+            print("load previous model: "+str(path))
         else:
             print("new model")
 
@@ -304,12 +329,17 @@ class ChemBart():
         max_new_tokens_precursor: int = 768,
         log_file: str = "log.txt",
         ckpt_path: str = "./pretrainckpt",
+        eval: bool = True,
+        greedy_mini_batch_size: int = 40,
+        beam_search_batch_size: int = 1,
     ) -> None:
         """Train, checkpoint, and evaluate the three-direction pretraining task.
 
         ``self.model_path`` is an optional source of initial weights.  Epoch
         checkpoints are always written under ``ckpt_path`` and never overwrite
-        the initial model file.
+        the initial model file. Train loss and greedy train top-1 accuracy are
+        always reported; test top-1 through top-10 are reported only when
+        ``eval`` is true.
         """
         if epochs < 1:
             raise ValueError("epochs must be at least 1")
@@ -321,6 +351,10 @@ class ChemBart():
             raise ValueError("lr must be positive")
         if max_new_tokens_precursor < 1:
             raise ValueError("max_new_tokens_precursor must be at least 1")
+        if greedy_mini_batch_size < 1:
+            raise ValueError("greedy_mini_batch_size must be at least 1")
+        if beam_search_batch_size < 1:
+            raise ValueError("beam_search_batch_size must be at least 1")
         if max_new_tokens_precursor > self.config.max_position_embeddings - 1:
             raise ValueError(
                 "max_new_tokens_precursor cannot exceed {}".format(
@@ -394,6 +428,9 @@ class ChemBart():
                 max_new_tokens_precursor=max_new_tokens_precursor,
                 epoch_number=epoch_number,
                 log_file=log_file,
+                evaluate_test=eval,
+                greedy_mini_batch_size=greedy_mini_batch_size,
+                beam_search_batch_size=beam_search_batch_size,
             )
 
     @staticmethod
@@ -430,8 +467,11 @@ class ChemBart():
         max_new_tokens_precursor,
         epoch_number,
         log_file,
+        evaluate_test,
+        greedy_mini_batch_size,
+        beam_search_batch_size,
     ):
-        """Use every visible GPU for train/test precursor evaluation."""
+        """Use every visible GPU for precursor evaluation."""
         environment_world_size = int(os.environ.get("WORLD_SIZE", "1"))
         if environment_world_size > 1 or dist.is_initialized():
             world_size = (
@@ -462,6 +502,9 @@ class ChemBart():
                     rank=rank,
                     world_size=world_size,
                     initialize_process_group=not dist.is_initialized(),
+                    evaluate_test=evaluate_test,
+                    greedy_mini_batch_size=greedy_mini_batch_size,
+                    beam_search_batch_size=beam_search_batch_size,
                 )
             finally:
                 self.BartNN.to(original_device)
@@ -476,8 +519,9 @@ class ChemBart():
             torch.cuda.empty_cache()
             try:
                 mp.spawn(
-                    ChemBart._pretrain_eval_worker,
+                    type(self)._pretrain_eval_worker,
                     args=(
+                        type(self),
                         gpu_count,
                         self._find_pretrain_port(),
                         str(checkpoint_path),
@@ -486,6 +530,9 @@ class ChemBart():
                         max_new_tokens_precursor,
                         epoch_number,
                         log_file,
+                        evaluate_test,
+                        greedy_mini_batch_size,
+                        beam_search_batch_size,
                     ),
                     nprocs=gpu_count,
                     join=True,
@@ -508,6 +555,9 @@ class ChemBart():
                 rank=0,
                 world_size=1,
                 initialize_process_group=False,
+                evaluate_test=evaluate_test,
+                greedy_mini_batch_size=greedy_mini_batch_size,
+                beam_search_batch_size=beam_search_batch_size,
             )
         finally:
             self.BartNN.to(original_device)
@@ -524,8 +574,11 @@ class ChemBart():
         rank,
         world_size,
         initialize_process_group,
+        evaluate_test,
+        greedy_mini_batch_size=40,
+        beam_search_batch_size=1,
     ):
-        """Evaluate precursor top-1 on train and top-10 on test."""
+        """Evaluate greedy train top-1 and optional cumulative test top-k."""
         owns_process_group = False
         if initialize_process_group:
             backend = "nccl" if device.type == "cuda" else "gloo"
@@ -543,6 +596,8 @@ class ChemBart():
 
             train_correct = 0
             train_evaluated = 0
+            train_encoder_inputs = []
+            train_labels = []
             for sample_index in range(rank, len(trainset), world_size):
                 example = self._reaction_to_precursor_example(
                     trainset[sample_index]
@@ -550,68 +605,78 @@ class ChemBart():
                 if example is None:
                     continue
                 encoder_input, label = example
-                try:
-                    candidates = self.predict(
-                        encoder_input,
-                        decoder_input="<cls>",
-                        sampling_method="beam",
-                        top_k=1,
-                        max_len=max_new_tokens_precursor,
-                        stop_with_sep=True,
-                        num_samples=1,
-                    )
-                except Exception as error:
-                    print(
-                        "Skipping train evaluation sample {} on rank {}: {}".format(
-                            sample_index, rank, error
-                        ),
-                        flush=True,
-                    )
+                train_encoder_inputs.append(encoder_input)
+                train_labels.append(label)
+
+            train_predictions = self._greedy_predictions(
+                train_encoder_inputs,
+                max_len=max_new_tokens_precursor,
+                dev=device,
+                mini_batch_size=greedy_mini_batch_size,
+            )
+            for prediction, label in zip(train_predictions, train_labels):
+                if prediction is None:
                     continue
                 train_evaluated += 1
-                if candidates and self.compare(
-                    self._decoded_precursor(candidates[0][0]), label
-                ):
+                if self.compare(self._decoded_precursor(prediction), label):
                     train_correct += 1
 
-            test_correct_at_10 = 0
+            test_correct_at_k = [0] * 10
             test_evaluated = 0
-            for sample_index in range(rank, len(testset), world_size):
+            test_examples = []
+            test_indices = range(rank, len(testset), world_size) if evaluate_test else ()
+            for sample_index in test_indices:
                 example = self._reaction_to_precursor_example(
                     testset[sample_index]
                 )
                 if example is None:
                     continue
                 encoder_input, label = example
+                test_examples.append((sample_index, encoder_input, label))
+
+            for batch_start in range(
+                0, len(test_examples), beam_search_batch_size
+            ):
+                batch = test_examples[
+                    batch_start:batch_start + beam_search_batch_size
+                ]
                 try:
-                    candidates = self.predict(
-                        encoder_input,
+                    batch_candidates = self._beam_predictions(
+                        [example[1] for example in batch],
                         decoder_input="<cls>",
-                        sampling_method="beam",
-                        top_k=50,
                         max_len=max_new_tokens_precursor,
                         stop_with_sep=True,
-                        num_samples=50,
+                        beam_width=50,
                     )
                 except Exception as error:
                     print(
-                        "Skipping test evaluation sample {} on rank {}: {}".format(
-                            sample_index, rank, error
+                        "Skipping test evaluation samples {} on rank {}: {}".format(
+                            [example[0] for example in batch], rank, error
                         ),
                         flush=True,
                     )
                     continue
 
-                test_evaluated += 1
-                for candidate in candidates[:10]:
-                    prediction = self._decoded_precursor(candidate[0])
-                    if self.compare(prediction, label):
-                        test_correct_at_10 += 1
-                        break
+                for (_sample_index, _encoder_input, label), candidates in zip(
+                    batch, batch_candidates
+                ):
+                    test_evaluated += 1
+                    first_match_rank = None
+                    for candidate_rank, candidate in enumerate(candidates[:10]):
+                        prediction = self._decoded_precursor(candidate[0])
+                        if self.compare(prediction, label):
+                            first_match_rank = candidate_rank
+                            break
+                    if first_match_rank is not None:
+                        # A top-k prediction is correct when at least one of
+                        # the first k ranked candidates matches the label.
+                        for top_k_index in range(first_match_rank, 10):
+                            test_correct_at_k[top_k_index] += 1
 
             metrics = torch.tensor(
                 [train_correct, train_evaluated]
-                + [test_correct_at_10, test_evaluated],
+                + test_correct_at_k
+                + [test_evaluated],
                 dtype=torch.long,
                 device=device,
             )
@@ -619,15 +684,23 @@ class ChemBart():
                 dist.all_reduce(metrics, op=dist.ReduceOp.SUM)
             if rank == 0:
                 train_accuracy = metrics[0].item() / max(1, metrics[1].item())
-                test_accuracy = metrics[2].item() / max(1, metrics[3].item())
-                message = (
-                    "Epoch {}: train precursor accuracy: top-1={:.6f}; "
-                    "test precursor accuracy: top-10={:.6f}"
-                ).format(
+                message = "Epoch {}: train precursor accuracy: top-1={:.6f}".format(
                     epoch_number,
                     train_accuracy,
-                    test_accuracy,
                 )
+                if evaluate_test:
+                    test_denominator = max(1, metrics[12].item())
+                    test_accuracies = [
+                        metrics[2 + index].item() / test_denominator
+                        for index in range(10)
+                    ]
+                    test_accuracy_message = ", ".join(
+                        "top-{}={:.6f}".format(index + 1, accuracy)
+                        for index, accuracy in enumerate(test_accuracies)
+                    )
+                    message += "; test precursor accuracy: {}".format(
+                        test_accuracy_message
+                    )
                 if log_file is None:
                     print(message, flush=True)
                 else:
@@ -756,11 +829,11 @@ class ChemBart():
             del self.BartNN
             gc.collect()
             torch.cuda.empty_cache()
-            completed = False
             try:
                 mp.spawn(
-                    ChemBart._paral_train_worker,
+                    type(self)._paral_train_worker,
                     args=(
+                        type(self),
                         gpu_count,
                         self._find_pretrain_port(),
                         starting_checkpoint,
@@ -770,24 +843,27 @@ class ChemBart():
                     nprocs=gpu_count,
                     join=True,
                 )
-                completed = True
-            finally:
-                # Keep this parent ChemBart instance usable after spawned
-                # workers exit. On failure, restore the starting checkpoint.
-                reload_path = (
-                    self._pretrain_checkpoint_path(
-                        checkpoint_start_epoch + epoch - 1,
-                        checkpoint_directory,
+            except BaseException:
+                # Restore a usable parent instance without replacing the
+                # original worker traceback if restoration itself fails.
+                try:
+                    self.load_model(starting_checkpoint)
+                    self.BartNN.to(original_device)
+                except BaseException as restore_error:
+                    print(
+                        "Warning: failed to restore parent model after DDP "
+                        "failure: {}".format(restore_error),
+                        flush=True,
                     )
-                    if completed
-                    else (
-                        None
-                        if starting_checkpoint is None
-                        else Path(starting_checkpoint)
-                    )
+                raise
+            else:
+                # Successful behavior is unchanged: load the checkpoint
+                # produced by the final spawned training epoch.
+                reload_path = self._pretrain_checkpoint_path(
+                    checkpoint_start_epoch + epoch - 1,
+                    checkpoint_directory,
                 )
-                if reload_path is not None:
-                    self.load_model(str(reload_path))
+                self.load_model(str(reload_path))
                 self.BartNN.to(original_device)
             return
 
@@ -997,6 +1073,172 @@ class ChemBart():
                 outputs.append(hidden.cpu().numpy())
         return outputs
 
+    @torch.no_grad()
+    def _greedy_predictions(
+        self,
+        encoder_inputs,
+        max_len,
+        dev=None,
+        mini_batch_size=40,
+    ):
+        """Greedily decode independent inputs in per-device mini-batches.
+
+        ``mini_batch_size`` is the number of different evaluation points sent
+        to one device together. It is unrelated to beam width. Each sequence
+        stops independently when it emits ``>`` or ``<end>``; completed rows
+        are removed from the active batch while the remaining rows retain
+        their decoder KV cache.
+        """
+        if mini_batch_size < 1:
+            raise ValueError("mini_batch_size must be at least 1")
+        if max_len < 1:
+            raise ValueError("max_len must be at least 1")
+        if not encoder_inputs:
+            return []
+
+        device = self.dev if dev is None else torch.device(dev)
+        model = (
+            self.BartNN.module
+            if isinstance(self.BartNN, DistributedDataParallel)
+            else self.BartNN
+        )
+        model.eval()
+        pad_token_id = int(self.tokenizer.vocab["<pad>"])
+        cls_token_id = int(self.tokenizer.vocab["<cls>"])
+        end_token_id = int(self.tokenizer.vocab["<end>"])
+        separator_token_id = int(self.tokenizer.vocab[">"])
+        predictions = [None] * len(encoder_inputs)
+
+        def select_cache_rows(cache, row_indices):
+            if cache is None or not row_indices:
+                return None
+            indices = torch.tensor(
+                row_indices, dtype=torch.long, device=device
+            )
+            if hasattr(cache, "batch_select_indices"):
+                cache.batch_select_indices(indices)
+                return cache
+            if hasattr(cache, "reorder_cache"):
+                cache.reorder_cache(indices)
+                return cache
+            return tuple(
+                tuple(
+                    None
+                    if state is None
+                    else state.index_select(0, indices.to(state.device))
+                    for state in layer_cache
+                )
+                for layer_cache in cache
+            )
+
+        for batch_start in range(0, len(encoder_inputs), mini_batch_size):
+            batch_strings = encoder_inputs[
+                batch_start : batch_start + mini_batch_size
+            ]
+            encoded_rows = []
+            original_rows = []
+            for local_row, encoder_input in enumerate(batch_strings):
+                encoded = self.tokenizer.encoder(encoder_input)
+                if len(encoded) == 0:
+                    continue
+                encoded_rows.append(encoded[0].long())
+                original_rows.append(batch_start + local_row)
+            if not encoded_rows:
+                continue
+
+            source_length = max(row.numel() for row in encoded_rows)
+            source_ids = torch.full(
+                (len(encoded_rows), source_length),
+                pad_token_id,
+                dtype=torch.long,
+                device=device,
+            )
+            for row_index, token_ids in enumerate(encoded_rows):
+                source_ids[row_index, : token_ids.numel()] = token_ids.to(
+                    device
+                )
+            source_attention_mask = source_ids.ne(pad_token_id).long()
+            encoder_hidden_state = model.get_encoder()(
+                input_ids=source_ids,
+                attention_mask=source_attention_mask,
+                return_dict=True,
+            ).last_hidden_state
+
+            active_output_rows = list(original_rows)
+            active_tokens = [[cls_token_id] for _ in original_rows]
+            past_key_values = None
+
+            for _generation_step in range(max_len):
+                if not active_output_rows:
+                    break
+                if past_key_values is None:
+                    decoder_input_ids = torch.full(
+                        (len(active_output_rows), 1),
+                        cls_token_id,
+                        dtype=torch.long,
+                        device=device,
+                    )
+                else:
+                    decoder_input_ids = torch.tensor(
+                        [[tokens[-1]] for tokens in active_tokens],
+                        dtype=torch.long,
+                        device=device,
+                    )
+
+                outputs = model(
+                    encoder_outputs=(encoder_hidden_state,),
+                    attention_mask=source_attention_mask,
+                    decoder_input_ids=decoder_input_ids,
+                    past_key_values=past_key_values,
+                    use_cache=True,
+                    return_dict=True,
+                )
+                next_token_ids = outputs.logits[:, -1, :].argmax(
+                    dim=-1
+                ).cpu().tolist()
+                output_cache = getattr(outputs, "past_key_values", None)
+
+                surviving_rows = []
+                surviving_output_rows = []
+                surviving_tokens = []
+                for row_index, token_id in enumerate(next_token_ids):
+                    tokens = active_tokens[row_index] + [int(token_id)]
+                    output_row = active_output_rows[row_index]
+                    if token_id in (separator_token_id, end_token_id):
+                        predictions[output_row] = self.tokenizer.decoder(tokens)
+                    else:
+                        surviving_rows.append(row_index)
+                        surviving_output_rows.append(output_row)
+                        surviving_tokens.append(tokens)
+
+                if not surviving_rows:
+                    active_output_rows = []
+                    break
+                row_indices = torch.tensor(
+                    surviving_rows, dtype=torch.long, device=device
+                )
+                encoder_hidden_state = encoder_hidden_state.index_select(
+                    0, row_indices
+                )
+                source_attention_mask = source_attention_mask.index_select(
+                    0, row_indices
+                )
+                past_key_values = select_cache_rows(
+                    output_cache, surviving_rows
+                )
+                active_output_rows = surviving_output_rows
+                active_tokens = surviving_tokens
+
+            for output_row, tokens in zip(
+                active_output_rows, active_tokens
+            ):
+                predictions[output_row] = self.tokenizer.decoder(tokens)
+
+            del source_ids, source_attention_mask, encoder_hidden_state
+            del past_key_values
+
+        return predictions
+
     '''
     def predict(self, s, decoder_input="<cls>",
                 top_k=10, max_len=60, stop_with_sep = True):
@@ -1052,13 +1294,55 @@ class ChemBart():
         
     @torch.no_grad()
     def _beam_search(self, s, decodervector, k, maxlen, stop_with_sep, dev):
+        """Beam-search one encoder input; see :meth:`_beam_search_batch`."""
+        return self._beam_search_batch(
+            [s], [decodervector], k, maxlen, stop_with_sep, dev
+        )[0]
+
+    @torch.no_grad()
+    def _beam_predictions(
+        self,
+        encoder_inputs,
+        decoder_input="<cls>",
+        beam_width=50,
+        max_len=60,
+        stop_with_sep=True,
+    ):
+        """Beam-decode multiple independent encoder inputs in one GPU batch."""
+        if not encoder_inputs:
+            return []
+        input_vectors = [
+            self.tokenizer.encoder(value)[0].tolist()
+            for value in encoder_inputs
+        ]
+        decoder_vector = self.tokenizer.encoder(decoder_input)[0][:-1].tolist()
+        output_batches = self._beam_search_batch(
+            input_vectors,
+            [decoder_vector] * len(input_vectors),
+            beam_width,
+            max_len,
+            stop_with_sep,
+            self.dev,
+        )
+        return [
+            [
+                [self.tokenizer.decoder(token_ids), score]
+                for token_ids, score in outputs
+            ]
+            for outputs in output_batches
+        ]
+
+    @torch.no_grad()
+    def _beam_search_batch(
+        self, sources, decoder_vectors, k, maxlen, stop_with_sep, dev
+    ):
         """Generate a shrinking beam ranked by mean token log probability.
 
-        The first decoder position creates ``k`` beams.  Thereafter a live
-        pool of size ``P`` creates ``P * k`` candidates and retains its best
-        ``P`` candidates.  Any retained candidate that terminates is moved to
-        the finished pool, so the live pool can only shrink.  The finished
-        pool is independently capped at ``k`` sequences.
+        Each source has an independent width-``k`` beam. All currently active
+        beams from all sources are flattened into one model forward pass, but
+        candidate ranking, pruning, termination, and final results remain
+        independent for each source. Thus a source batch of size ``B`` can
+        place up to ``B * k`` beams on one GPU at a time.
 
         Scores are accumulated in log space and compared as mean log
         probability, which is equivalent to the geometric mean probability
@@ -1069,8 +1353,15 @@ class ChemBart():
             raise ValueError("beam width must be at least 1")
         if maxlen < 1:
             raise ValueError("maxlen must be at least 1")
-        if len(decodervector) == 0:
-            raise ValueError("decodervector must contain at least one token")
+        if len(sources) != len(decoder_vectors):
+            raise ValueError("sources and decoder_vectors must have equal length")
+        if not sources:
+            return []
+        if any(len(vector) == 0 for vector in decoder_vectors):
+            raise ValueError("each decoder vector must contain at least one token")
+        prefix_lengths = {len(vector) for vector in decoder_vectors}
+        if len(prefix_lengths) != 1:
+            raise ValueError("batched decoder prefixes must have equal length")
 
         device = torch.device(dev)
         model = (
@@ -1079,9 +1370,20 @@ class ChemBart():
             else self.BartNN
         )
         model.eval()
-        source_ids = torch.tensor([s], dtype=torch.long, device=device)
+        pad_token_id = int(self.tokenizer.vocab["<pad>"])
+        maximum_source_length = max(len(source) for source in sources)
+        source_ids = torch.full(
+            (len(sources), maximum_source_length),
+            pad_token_id,
+            dtype=torch.long,
+            device=device,
+        )
+        for source_index, source in enumerate(sources):
+            source_ids[source_index, :len(source)] = torch.tensor(
+                source, dtype=torch.long, device=device
+            )
         source_attention_mask = source_ids.ne(
-            int(self.tokenizer.vocab["<pad>"])
+            pad_token_id
         ).long()
         encoder_outputs = model.get_encoder()(
             input_ids=source_ids,
@@ -1092,13 +1394,16 @@ class ChemBart():
 
         end_token_id = int(self.tokenizer.vocab["<end>"])
         separator_token_id = int(self.tokenizer.vocab[">"])
-        prefix_ids = list(decodervector)
 
-        # A beam entry is (token IDs, sum of generated-token log probabilities,
-        # generated-token count).  The supplied decoder prefix is not scored.
-        active = [(prefix_ids, 0.0, 0)]
-        finished = []
-        live_pool_size = k
+        # An active entry is (source index, token IDs, sum of generated-token
+        # log probabilities, generated-token count). Decoder prefixes are not
+        # scored. Finished/live-pool state is independent for every source.
+        active = [
+            (source_index, list(prefix), 0.0, 0)
+            for source_index, prefix in enumerate(decoder_vectors)
+        ]
+        finished = [[] for _ in sources]
+        live_pool_sizes = [k for _ in sources]
         past_key_values = None
 
         def mean_log_probability(candidate):
@@ -1135,29 +1440,37 @@ class ChemBart():
             )
 
         for generation_step in range(maxlen):
-            if not active or live_pool_size == 0:
+            if not active:
                 break
 
             current_batch_size = len(active)
             if past_key_values is None:
                 decoder_input_ids = torch.tensor(
-                    [candidate[0] for candidate in active],
+                    [candidate[1] for candidate in active],
                     dtype=torch.long,
                     device=device,
                 )
             else:
                 decoder_input_ids = torch.tensor(
-                    [[candidate[0][-1]] for candidate in active],
+                    [[candidate[1][-1]] for candidate in active],
                     dtype=torch.long,
                     device=device,
                 )
 
+            active_source_indices = torch.tensor(
+                [candidate[0] for candidate in active],
+                dtype=torch.long,
+                device=device,
+            )
+
             outputs = model(
                 encoder_outputs=(
-                    encoder_hidden_state.expand(current_batch_size, -1, -1),
+                    encoder_hidden_state.index_select(
+                        0, active_source_indices
+                    ),
                 ),
-                attention_mask=source_attention_mask.expand(
-                    current_batch_size, -1
+                attention_mask=source_attention_mask.index_select(
+                    0, active_source_indices
                 ),
                 decoder_input_ids=decoder_input_ids,
                 past_key_values=past_key_values,
@@ -1175,11 +1488,16 @@ class ChemBart():
             log_probability_rows = branch_log_probabilities.cpu().tolist()
             output_cache = getattr(outputs, "past_key_values", None)
 
-            candidates = []
-            for parent_index, (tokens, log_sum, token_count) in enumerate(active):
+            candidates_by_source = [[] for _ in sources]
+            for parent_index, (
+                source_index,
+                tokens,
+                log_sum,
+                token_count,
+            ) in enumerate(active):
                 for branch_index in range(branch_count):
                     token_id = int(token_rows[parent_index][branch_index])
-                    candidates.append(
+                    candidates_by_source[source_index].append(
                         (
                             tokens + [token_id],
                             log_sum
@@ -1194,32 +1512,41 @@ class ChemBart():
             # At position zero, one decoder prefix expands into the initial
             # width-k pool.  Later positions retain at most the current live
             # pool size, which makes beam termination permanently shrink it.
-            retained = sorted(
-                candidates,
-                key=lambda candidate: mean_log_probability(candidate[:3]),
-                reverse=True,
-            )[:live_pool_size]
-
             next_active = []
             retained_parent_indices = []
-            newly_finished = []
-            for tokens, log_sum, token_count, parent_index in retained:
-                last_token = tokens[-1]
-                has_finished = last_token == end_token_id or (
-                    stop_with_sep and last_token == separator_token_id
-                )
-                candidate = (tokens, log_sum, token_count)
-                if has_finished:
-                    newly_finished.append(candidate)
-                else:
-                    next_active.append(candidate)
-                    retained_parent_indices.append(parent_index)
+            for source_index, source_candidates in enumerate(
+                candidates_by_source
+            ):
+                retained = sorted(
+                    source_candidates,
+                    key=lambda candidate: mean_log_probability(candidate[:3]),
+                    reverse=True,
+                )[:live_pool_sizes[source_index]]
+                newly_finished = []
+                source_live_count = 0
+                for tokens, log_sum, token_count, parent_index in retained:
+                    last_token = tokens[-1]
+                    has_finished = last_token == end_token_id or (
+                        stop_with_sep and last_token == separator_token_id
+                    )
+                    candidate = (tokens, log_sum, token_count)
+                    if has_finished:
+                        newly_finished.append(candidate)
+                    else:
+                        next_active.append(
+                            (source_index, tokens, log_sum, token_count)
+                        )
+                        retained_parent_indices.append(parent_index)
+                        source_live_count += 1
 
-            finished.extend(newly_finished)
-            finished = sorted(
-                finished, key=mean_log_probability, reverse=True
-            )[:k]
-            live_pool_size = len(next_active)
+                finished[source_index].extend(newly_finished)
+                finished[source_index] = sorted(
+                    finished[source_index],
+                    key=mean_log_probability,
+                    reverse=True,
+                )[:k]
+                live_pool_sizes[source_index] = source_live_count
+
             past_key_values = select_cache_rows(
                 output_cache, retained_parent_indices
             )
@@ -1231,21 +1558,31 @@ class ChemBart():
                 branch_log_probabilities,
                 branch_token_ids,
                 decoder_input_ids,
-                candidates,
-                retained,
+                active_source_indices,
+                candidates_by_source,
                 output_cache,
             )
 
         # If the length limit is reached, incomplete live sequences remain
         # valid beam results and compete with completed sequences by the same
         # geometric-mean score.
-        finished.extend(active)
-        finished = sorted(
-            finished, key=mean_log_probability, reverse=True
-        )[:k]
+        for source_index, tokens, log_sum, token_count in active:
+            finished[source_index].append((tokens, log_sum, token_count))
         return [
-            [tokens, math.exp(mean_log_probability((tokens, log_sum, count)))]
-            for tokens, log_sum, count in finished
+            [
+                [
+                    tokens,
+                    math.exp(
+                        mean_log_probability((tokens, log_sum, token_count))
+                    ),
+                ]
+                for tokens, log_sum, token_count in sorted(
+                    source_finished,
+                    key=mean_log_probability,
+                    reverse=True,
+                )[:k]
+            ]
+            for source_finished in finished
         ]
     
 
