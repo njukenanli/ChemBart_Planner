@@ -15,6 +15,8 @@ class CBTempYield():
         return out.tolist()
 
 class CBRetro():
+    """Single-device, single-reaction prediction using the pretraining beam search."""
+
     def __init__(self, path, dev = "cuda:0"):
         self.model = ChemBart(path,dev)
         self.model.BartNN.eval()
@@ -22,12 +24,42 @@ class CBRetro():
     def share_memory(self):
         self.model.BartNN.share_memory()
 
-    def precursor(self, product, lock = None, top_k=10, top_p=0.9, sampling_method='beam', num_samples=5):
+    def _predict(self, encoder_input, decoder_input, lock, num_samples,
+                 max_len, sampling_method='beam', top_k=10, top_p=0.9):
         if lock is not None:
             lock.acquire()
-        out = self.model.predict("<msk>>>"+product, sampling_method=sampling_method, max_len = 1018, decoder_input="<cls>", top_k = top_k, top_p = top_p,num_samples=num_samples) 
-        if lock is not None:
-            lock.release()
+        try:
+            # A supplied decoder prefix also occupies model positions.
+            prefix = self.model.tokenizer.encoder(decoder_input)
+            if len(prefix) == 0:
+                raise ValueError("Decoder prefix could not be tokenized")
+            prefix_length = len(prefix[0]) - 1  # Exclude tokenizer-added <end>.
+            max_len = min(
+                max_len, self.model.config.max_position_embeddings - prefix_length
+            )
+            if max_len < 1:
+                raise ValueError("No model positions remain for generation")
+            if sampling_method == 'beam':
+                return self.model._beam_predictions(
+                    [encoder_input], decoder_input=decoder_input,
+                    beam_width=num_samples, max_len=max_len, stop_with_sep=True,
+                )[0]
+            return self.model.predict(
+                encoder_input, decoder_input=decoder_input,
+                sampling_method=sampling_method, max_len=max_len,
+                stop_with_sep=True, top_k=top_k, top_p=top_p,
+                num_samples=num_samples,
+            )
+        finally:
+            if lock is not None:
+                lock.release()
+
+    def precursor(self, product, lock = None, top_k=10, top_p=0.9, sampling_method='beam', num_samples=50, max_len=768):
+        """Predict precursors; num_samples sets beam width in beam mode."""
+        out = self._predict(
+            "<msk>>>"+product, "<cls>", lock, num_samples, max_len,
+            sampling_method=sampling_method, top_k=top_k, top_p=top_p,
+        )
         for j in range(len(out)):
             ans = out[j][0]
             if ans[-5:] == "<end>":
@@ -38,12 +70,11 @@ class CBRetro():
                 out[j][0] = ans[5:]
         return out
 
-    def reagent(self, reactant, product, k, lock = None):
-        if lock is not None:
-            lock.acquire()
-        out = self.model.predict(reactant+"><msk>>"+product, max_len = 1018 - len(reactant), decoder_input = "<cls>"+reactant+">", top_k = k)
-        if lock is not None:
-            lock.release()
+    def reagent(self, reactant, product, k=50, lock = None, max_len=768):
+        """Predict reagents using a width-k beam (default 50)."""
+        out = self._predict(
+            reactant+"><msk>>"+product, "<cls>"+reactant+">", lock, k, max_len,
+        )
         for j in range(len(out)):
             ans = out[j][0]
             if ans[-1] != ">":
@@ -55,17 +86,17 @@ class CBRetro():
                 out[j][0] = ans
         return out
 
-    def product(self, reactant, reagent, k, lock = None):
+    def product(self, reactant, reagent, k=50, lock = None, max_len=768):
+        """Predict products using a width-k beam (default 50)."""
         # 确保 reactant 和 reagent 都是字符串
 
         if reagent is None:
             reagent = ""
 
-        if lock is not None:
-            lock.acquire()
-        out = self.model.predict(reactant+">"+reagent+"><msk>", max_len = 1018 - len(reactant) - len(reagent), decoder_input = "<cls>" + reactant + ">" + reagent + ">", top_k = k)
-        if lock is not None:
-            lock.release()
+        out = self._predict(
+            reactant+">"+reagent+"><msk>",
+            "<cls>"+reactant+">"+reagent+">", lock, k, max_len,
+        )
         for j in range(len(out)):
             ans = out[j][0]
             if ans[-1] != ">":
@@ -105,4 +136,3 @@ class CBRL():
         if lock is not None:
             lock.release()
         return ret
-

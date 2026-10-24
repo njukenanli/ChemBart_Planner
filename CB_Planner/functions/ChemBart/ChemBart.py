@@ -270,21 +270,29 @@ class ChemBart():
             beam_search_batch_size=beam_search_batch_size,
         )
 
-    def __init__(self, path: Optional[str], dev: str = "cpu"):
+    def __init__(self, path: Optional[str], dev: str = "cpu", model_backbone: Literal["BART", "T5"] = "BART"):
         self.tokenizer=CBTokenizer()
-        self.config=BartConfig.from_pretrained(absdir + "config.json")
-        self.load_model(path)
+        if model_backbone == "BART":
+            self.config = BartConfig.from_pretrained(absdir + "config.json")
+        elif model_backbone == "T5":
+            from transformers import T5Config
+            self.config = T5Config.from_pretrained(absdir + "t5-config.json")
+        self.load_model(path, model_backbone)
         self.dev = torch.device(dev)
         self.BartNN.to(self.dev)
         self.model_path = path
     
-    def load_model(self, path: Optional[str]):
-        self.BartNN=BartForConditionalGeneration(self.config)
+    def load_model(self, path: Optional[str], model_backbone: Literal["BART", "T5"]):
+        if model_backbone == "BART":
+            self.BartNN = BartForConditionalGeneration(self.config)
+        elif model_backbone == "T5":
+            from transformers import T5ForConditionalGeneration
+            self.BartNN = T5ForConditionalGeneration(self.config)
         if path is not None:
             self.BartNN.load_state_dict(torch.load(path, map_location='cpu'))
-            print("load previous model: "+str(path))
+            print("Load previous model: "+str(path))
         else:
-            print("new model")
+            print("New randomly-initialized model!")
 
     def trans_to_list(self,l):#<cls> is not included
         out=[]
