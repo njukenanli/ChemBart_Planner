@@ -18,26 +18,30 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+# Support the documented direct-script invocation from the project root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from config import config
+
 
 ASSETS = {
     "chembart": {
         "url": "https://huggingface.co/ChemBart/Pretrained-Full/resolve/main/ChemBart_Full4.pth",
-        "dest": Path("CB_Planner/functions/ChemBart/model/Pretrained-Full.pth"),
+        "config_key": "chembart_path",
         "description": "Pretrained ChemBart model",
     },
     "rl": {
         "url": "https://huggingface.co/ChemBart/Policy-Value/resolve/main/CB_MCTS.pth",
-        "dest": Path("CB_Planner/functions/ChemBart/model/Policy-Value.pth"),
+        "config_key": "rl_path",
         "description": "Policy-value model",
     },
     "temp_yield": {
         "url": "https://huggingface.co/ChemBart/Temperature-Yield/resolve/main/temp_yield_bart.pth",
-        "dest": Path("CB_Planner/functions/ChemBart/model/Temperature-Yield.pth"),
+        "config_key": "ty_path",
         "description": "Temperature-yield model",
     },
     "basic_mol": {
         "url": "https://huggingface.co/datasets/ChemBart/Basic-Mols/resolve/main/basic_mol_canon.json",
-        "dest": Path("CB_Planner/functions/ChemBart/data/basic_mol.json"),
+        "config_key": "bascic_mol",
         "description": "Buyable molecule dataset",
     },
 }
@@ -94,11 +98,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     selected_keys = args.only or list(ASSETS.keys())
+    destinations = {key: Path(config[ASSETS[key]["config_key"]]) for key in selected_keys}
 
     print("Assets to download:")
     for key in selected_keys:
         meta = ASSETS[key]
-        print(f"  - {key}: {meta['description']} -> {meta['dest']}")
+        print(f"  - {key}: {meta['description']} -> {destinations[key]}")
 
     errors = []
     downloaded = 0
@@ -106,7 +111,7 @@ def main() -> int:
     for key in selected_keys:
         meta = ASSETS[key]
         try:
-            if _download(meta["url"], meta["dest"], force=args.force, timeout=args.timeout):
+            if _download(meta["url"], destinations[key], force=args.force, timeout=args.timeout):
                 downloaded += 1
         except RuntimeError as exc:
             errors.append(str(exc))

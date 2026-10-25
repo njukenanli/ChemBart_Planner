@@ -60,7 +60,6 @@ from rdkit.Chem import Draw
 from io import BytesIO
 from PIL import Image
 import numpy as np
-import cv2
 
 # 配置日志
 logging.basicConfig(

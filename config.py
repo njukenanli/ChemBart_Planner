@@ -42,7 +42,7 @@ config = \
             "parallel":{
                 "process_parallel": False,
                 "pool_size": 3, # num of molecules (processes) that can be solved at the same time. Each process requires one cpu (so do not exceed num of cpus) and part of the gpu memory (so usually this param is much smaller than num of cpus).
-                "semaphore_per_model": 3, # num of processes that can call a model at the same time, linited by the gpu memory.
+                "semaphore_per_model": 3, # num of processes that can call a model at the same time, limited by the gpu memory.
             }
 }
 

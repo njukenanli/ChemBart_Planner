@@ -150,6 +150,9 @@ class TY():
     def AddTemperatureYield(self, routes):
         for route_name in routes:
             for product in routes[route_name][2]:
+                # Terminal/status answers such as "basic mol" contain no reaction.
+                if not isinstance(routes[route_name][2][product], dict):
+                    continue
                 try:
                     routes[route_name][2][product]["temperature"], routes[route_name][2][product]["yield"] = self.model.pred(routes[route_name][2][product]["precursors"], routes[route_name][2][product]["reagents"], product) 
                 except Exception as e:
