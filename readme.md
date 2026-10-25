@@ -64,7 +64,7 @@ Edit the parameters in the config.py file to control the planner. The discriptio
     - choice_per_step: 10, # Usually LLM can only generate around 10 choices with high quality. We need to make more efforts to generate more choices in each step to increase the design success rate.
     - device: # There are currently 3 models to be loaded simultaniously. If the memory of each GPU is less than 32 GB, each GPU can only load one model. If there are less than 3 GPUs and the memory of each GPU is less than 32 GB, put the rest of the models on CPUs.
     - pool_size: # If there are more than one cpus, process parallel here can be considered. If users use GPUs, each process would generate some memory usage in each GPU due to the “share memory” technique of the PyTorch model, so the Pool is needed in multiprocessing to limit the number of processes that are running at the same time in case of OOM or just seizure. For 11GB GPU, pool size should be no larger than 3; for 24GB, 6; for 48GB, 12.
-    - semaphore_per_model: # num of processes that can call a model at the same time, limited by the gpu memory. For 11GB GPU, 1; for 24GB, no larger than 3; for 48 GB, 6.
+    - semaphore_retro_model, semaphore_reagt_model, semaphore_prod_model, semaphore_rl_model: # Maximum concurrent calls to the precursor, reagent, product, and shared RL policy/value models, respectively (defaults: 2, 4, 3, 4). Used when process_parallel is True and there are multiple target molecules. Effective concurrency is also bounded by pool_size; tune each limit for GPU memory, sequence length, and generation strategy.
     
 
 3.Run the Planner

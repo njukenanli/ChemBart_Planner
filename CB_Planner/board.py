@@ -53,7 +53,10 @@ class CB_Planner():
                 routes.update(self.paraller_unit(pv, tasklist[i][0], i, tasklist[i][1]))
         else:
             with Manager() as manager:
-                locklist = [manager.Semaphore(self.config["parallel"]["semaphore_per_model"]) for _ in range(4)]
+                locklist = [manager.Semaphore(self.config["parallel"][key]) for key in (
+                    "semaphore_retro_model", "semaphore_reagt_model",
+                    "semaphore_prod_model", "semaphore_rl_model",
+                )]
                 train_data_lock = manager.Lock() if self.config["getdata"]["train"] else None
                 pv.share_memory(*locklist)
                 with Pool(self.config["parallel"]["pool_size"]) as pool:
