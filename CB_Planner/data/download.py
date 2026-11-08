@@ -25,7 +25,7 @@ from config import config
 
 ASSETS = {
     "chembart": {
-        "url": "https://huggingface.co/ChemBart/Pretrained-Full/resolve/main/ChemBart_Full4.pth",
+        "url": "https://huggingface.co/ChemBart/Pretrained-Full/resolve/main/ChemBart_Full11.pth",
         "config_key": "chembart_path",
         "description": "Pretrained ChemBart model",
     },
